@@ -18,10 +18,23 @@ define([
      */
     // Shared helper: compute relative due date text from a date string.
     // Uses Math.floor consistently so "Due in 2 weeks" means at least 14 full days remain.
+    // Parse a YYYY-MM-DD string as local time instead of UTC.
+    // new Date('YYYY-MM-DD') is parsed as UTC per spec, which shifts to the
+    // previous day in negative-UTC-offset timezones.
+    var parseDateLocal = function (dateStr) {
+        if (!dateStr) { return null; }
+        var parts = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (parts) {
+            return new Date(parseInt(parts[1], 10), parseInt(parts[2], 10) - 1, parseInt(parts[3], 10));
+        }
+        var d = new Date(dateStr);
+        return isNaN(d.getTime()) ? null : d;
+    };
+
     var formatRelativeDate = function (dateStr) {
         if (!dateStr) { return ''; }
-        var dateObj = new Date(dateStr);
-        if (isNaN(dateObj.getTime())) { return ''; }
+        var dateObj = parseDateLocal(dateStr);
+        if (!dateObj) { return ''; }
 
         var today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -371,7 +384,7 @@ define([
                             el.dropfn(el, target, source, sibling);
                         }
 
-                        var id = Number($(el).attr('data-id'));
+                        var id = String($(el).attr('data-id'));
                         var list = self.options.boards.list || [];
 
                         var index1 = list.indexOf(id);
@@ -388,8 +401,9 @@ define([
                         }
 
                         var index2;
-                        var id2 = Number($(sibling).attr("data-id"));
+                        var id2 = $(sibling).attr("data-id");
                         if (sibling && id2) {
+                            id2 = String(id2);
                             index2 = list.indexOf(id2);
                         }
                         // If we can't find the drop position, drop at the end
@@ -477,8 +491,8 @@ define([
 
                         console.log("In drop");
 
-                        var id1 = Number($(el).attr('data-eid'));
-                        var boardId = Number($(source).closest('.kanban-board').data('id'));
+                        var id1 = String($(el).attr('data-eid'));
+                        var boardId = String($(source).closest('.kanban-board').data('id'));
 
                         // Move to trash?
                         if (target.classList.contains('kanban-trash')) {
@@ -488,11 +502,11 @@ define([
                         }
 
                         // Find the new board
-                        var targetId = Number($(target).closest('.kanban-board').data('id'));
+                        var targetId = String($(target).closest('.kanban-board').data('id'));
                         if (!targetId) { return; }
                         var board2 = __findBoardJSON(targetId);
                         var id2 = $(sibling).attr('data-eid');
-                        if (id2) { id2 = Number(id2); }
+                        if (id2) { id2 = String(id2); }
                         var pos2 = id2 ? board2.item.indexOf(id2) : board2.item.length;
                         if (pos2 === -1) { pos2 = board2.item.length; }
 
@@ -533,7 +547,7 @@ define([
             var boards = self.options.boards;
             var data = boards.data || {};
             var exists = Object.keys(data).some(function (id) {
-                return (data[id].item || []).indexOf(Number(eid)) !== -1;
+                return (data[id].item || []).indexOf(String(eid)) !== -1;
             });
             return exists;
         };
@@ -554,7 +568,7 @@ define([
                 }
                 // Remove from this board only
                 var l = boards.data[source].item;
-                var idx = l.indexOf(Number(eid));
+                var idx = l.indexOf(String(eid));
                 if (idx !== -1) { l.splice(idx, 1); }
                 if (boards.data[source] === board) { same = idx; }
             } else {
@@ -629,7 +643,7 @@ define([
             nodeCursors.classList.add('cp-kanban-cursors');
             Object.keys(self.options.cursors).forEach(function (id) {
                 var c = self.options.cursors[id];
-                if (Number(c.item) !== Number(element.id)) { return; }
+                if (String(c.item) !== String(element.id)) { return; }
                 var el = self.options.getAvatar(c);
                 nodeCursors.appendChild(el);
             });
@@ -1104,7 +1118,7 @@ define([
                         dueDateBadge.className = 'kanban-task-due-date';
 
                         // Format exact date for tooltip
-                        var dueDate = new Date(task.due_date);
+                        var dueDate = parseDateLocal(task.due_date) || new Date(task.due_date);
                         dueDate.setHours(0, 0, 0, 0);
                         var exactDateStr = dueDate.toLocaleDateString('en-US', {
                             weekday: 'long',
@@ -1121,10 +1135,10 @@ define([
                         var today = new Date();
                         today.setHours(0, 0, 0, 0);
                         var daysUntilDue = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
-                        if (daysUntilDue < 0) {
+                        if (daysUntilDue <= 0) {
                             dueDateBadge.classList.add('kanban-task-due-overdue');
                         } else if (daysUntilDue <= 1) {
-                            dueDateBadge.classList.add(daysUntilDue === 0 ? 'kanban-task-due-overdue' : 'kanban-task-due-urgent');
+                            dueDateBadge.classList.add('kanban-task-due-urgent');
                         } else if (daysUntilDue < 7) {
                             dueDateBadge.classList.add('kanban-task-due-urgent');
                         } else if (daysUntilDue < 30) {
@@ -1348,7 +1362,7 @@ define([
             nodeCursors.classList.add('cp-kanban-cursors');
             Object.keys(self.options.cursors).forEach(function (id) {
                 var c = self.options.cursors[id];
-                if (Number(c.board) !== Number(board.id)) { return; }
+                if (String(c.board) !== String(board.id)) { return; }
                 var el = self.options.getAvatar(c);
                 nodeCursors.appendChild(el);
             });

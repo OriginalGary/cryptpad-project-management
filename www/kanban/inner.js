@@ -118,6 +118,19 @@ define([
         return '#FFFFFF';
     };
 
+    // Parse a YYYY-MM-DD string as local time instead of UTC.
+    // new Date('YYYY-MM-DD') is parsed as UTC per ECMAScript spec, which shifts
+    // to the previous day in negative-UTC-offset timezones.
+    var parseDateLocal = function (dateStr) {
+        if (!dateStr) { return null; }
+        var parts = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (parts) {
+            return new Date(parseInt(parts[1], 10), parseInt(parts[2], 10) - 1, parseInt(parts[3], 10));
+        }
+        var d = new Date(dateStr);
+        return isNaN(d.getTime()) ? null : d;
+    };
+
     var getAvatar = function (cursor, noClear) {
         // Tippy
         var html = MT.getCursorAvatar(cursor);
@@ -1834,7 +1847,7 @@ define([
                         if (!yes) { return; }
                         var newDeps = [];
                         $(modalContent).find('input:checked').each(function () {
-                            var taskId = parseInt($(this).attr('data-task-id'));
+                            var taskId = String($(this).attr('data-task-id') || '');
                             if (taskId) { newDeps.push(taskId); }
                         });
                         task.dependencies = newDeps;
@@ -2081,7 +2094,7 @@ define([
             getValue: function () {
                 var selected = [];
                 $projectDeps.find('.cp-kanban-project-dep-checkbox:checked').each(function () {
-                    selected.push(Number($(this).val()));
+                    selected.push(String($(this).val()));
                 });
                 return selected;
             },
@@ -2089,7 +2102,7 @@ define([
                 if (isBoard) { return; } // Dependencies are not available for boards
 
                 $projectDeps.empty();
-                deps = deps || [];
+                deps = (deps || []).map(String);
 
                 // Get all projects (items) except the current one
                 var boards = kanban.options.boards || {};
@@ -2129,7 +2142,7 @@ define([
                     $(checkbox).off('change').on('change', function () {
                         var selected = [];
                         $projectDeps.find('.cp-kanban-project-dep-checkbox:checked').each(function () {
-                            selected.push(Number($(this).val()));
+                            selected.push(String($(this).val()));
                         });
                         dataObject.dependencies = selected;
                         commit();
@@ -2264,11 +2277,11 @@ define([
             var shiftItem = function (direction, el) {
                 var board = $(el).closest('.kanban-board');
                 var boards = kanban.options.boards;
-                var elId = parseInt($(el).attr("data-eid"));
-                var boardId = parseInt($(board).attr("data-id"));
+                var elId = String($(el).attr("data-eid"));
+                var boardId = String($(board).attr("data-id"));
                 var boardItems = boards.data[boardId].item;
                 var index = boardItems.indexOf(elId);
-                var boardIndex = boards.list.indexOf(parseInt(boardId));
+                var boardIndex = boards.list.indexOf(boardId);
                 let nextBoardItems;
 
                 if (direction === 'up' && index > 0) {
@@ -2286,7 +2299,7 @@ define([
 
             var shiftBoards = function (direction, el) {
                 var elId = $(el).attr("data-id");
-                var index = kanban.options.boards.list.indexOf(parseInt(elId));
+                var index = kanban.options.boards.list.indexOf(String(elId));
                 if (direction === 'left' && index > 0) {
                     move(kanban.options.boards.list, index, index - 1);
                 } else if (direction === 'right' && index < kanban.options.boards.list.length - 1) {
@@ -3104,7 +3117,8 @@ define([
                 // All other presets require a due date
                 if (!dateStr) { return false; }
 
-                var itemDate = new Date(dateStr);
+                var itemDate = parseDateLocal(dateStr);
+                if (!itemDate) { return false; }
                 itemDate.setHours(0, 0, 0, 0);
 
                 switch (preset) {
@@ -3823,8 +3837,8 @@ define([
                 // 14 full days remain, matching the pipeline card view in jkanban_cp.js.
                 var formatRelativeDueDate = function (dateStr) {
                     if (!dateStr) { return ''; }
-                    var dateObj = new Date(dateStr);
-                    if (isNaN(dateObj.getTime())) { return ''; }
+                    var dateObj = parseDateLocal(dateStr);
+                    if (!dateObj) { return ''; }
 
                     var today = new Date();
                     today.setHours(0, 0, 0, 0);
@@ -3855,8 +3869,8 @@ define([
                 // Helper to get due date urgency class
                 var getDueDateUrgencyClass = function (dateStr) {
                     if (!dateStr) { return ''; }
-                    var dateObj = new Date(dateStr);
-                    if (isNaN(dateObj.getTime())) { return ''; }
+                    var dateObj = parseDateLocal(dateStr);
+                    if (!dateObj) { return ''; }
 
                     var today = new Date();
                     today.setHours(0, 0, 0, 0);
@@ -4197,7 +4211,7 @@ define([
                             if (!yes) { return; }
                             var newDeps = [];
                             $(modalContent).find('input:checked').each(function () {
-                                var taskId = parseInt($(this).attr('data-task-id'));
+                                var taskId = String($(this).attr('data-task-id') || '');
                                 if (taskId) { newDeps.push(taskId); }
                             });
 
@@ -4261,9 +4275,7 @@ define([
             };
 
             var parseDate = function (dateStr) {
-                if (!dateStr) { return null; }
-                var d = new Date(dateStr);
-                return isNaN(d.getTime()) ? null : d;
+                return parseDateLocal(dateStr);
             };
 
             var formatDateShort = function (date) {
@@ -4352,7 +4364,8 @@ define([
                         score: getProjectScore(item),
                         assignee: item.assignee || '',
                         tasks: item.tasks || [],
-                        color: item.color || ''
+                        color: item.color || '',
+                        dependencies: item.dependencies || []
                     });
                 });
 
@@ -5063,49 +5076,57 @@ define([
 
                 var isToday = function (dateStr) {
                     if (!dateStr) return false;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return false;
                     d.setHours(0, 0, 0, 0);
                     return d.getTime() === today.getTime();
                 };
                 var isThisWeek = function (dateStr) {
                     if (!dateStr) return false;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return false;
                     d.setHours(0, 0, 0, 0);
                     return d > today && d <= endOfWeek;
                 };
                 var isThisMonth = function (dateStr) {
                     if (!dateStr) return false;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return false;
                     d.setHours(0, 0, 0, 0);
                     return d > endOfWeek && d <= thirtyDaysOut;
                 };
                 var isComingUp = function (dateStr) {
                     if (!dateStr) return false;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return false;
                     d.setHours(0, 0, 0, 0);
                     return d > thirtyDaysOut && d <= sixtyDaysOut;
                 };
                 var isOverdue = function (dateStr) {
                     if (!dateStr) return false;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return false;
                     d.setHours(0, 0, 0, 0);
                     return d < today;
                 };
                 var getDaysOverdue = function (dateStr) {
                     if (!dateStr) return 0;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return 0;
                     d.setHours(0, 0, 0, 0);
                     return Math.floor((today - d) / (1000 * 60 * 60 * 24));
                 };
                 var getDaysUntil = function (dateStr) {
                     if (!dateStr) return 0;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return 0;
                     d.setHours(0, 0, 0, 0);
                     return Math.floor((d - today) / (1000 * 60 * 60 * 24));
                 };
                 var formatDueDate = function (dateStr) {
                     if (!dateStr) return '';
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return '';
                     var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                     var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -5863,7 +5884,7 @@ define([
             list = boards.list = Util.deduplicateString(list);
 
             Object.keys(data).forEach(function (id) {
-                var idVal = isNaN(Number(id)) ? id : Number(id);
+                var idVal = String(id);
                 if (list.indexOf(idVal) === -1) {
                     list.push(idVal);
                 }
@@ -5874,7 +5895,7 @@ define([
             Object.keys(items).forEach(function (eid) {
                 var exists = Object.keys(data).some(function (id) {
                     var itemList = data[id].item || [];
-                    return itemList.indexOf(eid) !== -1 || itemList.indexOf(Number(eid)) !== -1;
+                    return itemList.indexOf(eid) !== -1 || itemList.indexOf(String(eid)) !== -1;
                 });
                 if (!exists) { delete items[eid]; }
             });
