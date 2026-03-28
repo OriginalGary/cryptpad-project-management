@@ -1853,9 +1853,15 @@ define([
                 var parsed = Utils.Hash.parsePadUrl(href);
                 return 'thumbnail-' + parsed.type + '-' + channel;
             };
+            // App types that ship a built-in templates.js file.
+            // Loading a missing file produces a harmless but noisy 404
+            // in the browser console, so we skip the require for types
+            // that are known not to have one.
+            var APP_TYPES_WITH_TEMPLATES = ['form'];
             sframeChan.on('Q_CREATE_TEMPLATES', function (type, cb) {
                 var templates;
                 nThen(function (waitFor) {
+                    if (APP_TYPES_WITH_TEMPLATES.indexOf(type) === -1) { return; }
                     var next = waitFor();
                     require([
                         '/'+type+'/templates.js'

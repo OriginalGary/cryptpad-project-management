@@ -63,7 +63,7 @@ define([
 
     // Debug flag for kanban diagnostic logging. Set to true to enable console output
     // for data synchronization and other diagnostic messages.
-    var DEBUG_KANBAN = true;
+    var DEBUG_KANBAN = false;
 
     // Scoring dimensions - defined at module level so all functions can access
     var scoringDimensions = [
@@ -868,7 +868,7 @@ define([
                     // Title (Large, prominent)
                     h('div.cp-kanban-title-section', [
                         titleInput = h('input#cp-kanban-edit-title', {
-                            placeholder: 'Task title...',
+                            placeholder: 'Project title...',
                             class: 'cp-kanban-title-input'
                         })
                     ]),
@@ -3960,25 +3960,27 @@ define([
 
                     // Checkbox handler
                     $(checkbox).on('change', function () {
-                        console.log('[Checkbox Debug] Checkbox changed for task:', task.title, 'checked:', this.checked);
-                        console.log('[Checkbox Debug] taskData:', taskData);
+                        if (DEBUG_KANBAN) {
+                            console.log('[Checkbox Debug] Checkbox changed for task:', task.title, 'checked:', this.checked);
+                            console.log('[Checkbox Debug] taskData:', taskData);
+                        }
                         var checkboxEl = this;
                         var boards = kanban.options.boards || {};
                         var item = boards.items[taskData.projectId];
-                        console.log('[Checkbox Debug] Found item:', item ? item.title : 'NOT FOUND');
+                        if (DEBUG_KANBAN) { console.log('[Checkbox Debug] Found item:', item ? item.title : 'NOT FOUND'); }
                         if (!item || !Array.isArray(item.tasks)) {
-                            console.log('[Checkbox Debug] ERROR: item or item.tasks not found');
+                            if (DEBUG_KANBAN) { console.log('[Checkbox Debug] ERROR: item or item.tasks not found'); }
                             return;
                         }
 
                         var currentTasks = item.tasks.slice();
-                        console.log('[Checkbox Debug] currentTasks length:', currentTasks.length, 'looking for index:', taskData.taskIndex);
+                        if (DEBUG_KANBAN) { console.log('[Checkbox Debug] currentTasks length:', currentTasks.length, 'looking for index:', taskData.taskIndex); }
                         var taskToComplete = currentTasks[taskData.taskIndex];
                         if (!taskToComplete) {
-                            console.log('[Checkbox Debug] ERROR: taskToComplete not found at index', taskData.taskIndex);
+                            if (DEBUG_KANBAN) { console.log('[Checkbox Debug] ERROR: taskToComplete not found at index', taskData.taskIndex); }
                             return;
                         }
-                        console.log('[Checkbox Debug] taskToComplete:', taskToComplete.title, 'recurrence:', taskToComplete.recurrence, 'due_date:', taskToComplete.due_date);
+                        if (DEBUG_KANBAN) { console.log('[Checkbox Debug] taskToComplete:', taskToComplete.title, 'recurrence:', taskToComplete.recurrence, 'due_date:', taskToComplete.due_date); }
 
                         var completeTaskAction = function () {
                             currentTasks[taskData.taskIndex] = Object.assign({}, currentTasks[taskData.taskIndex], {
@@ -3986,16 +3988,18 @@ define([
                             });
 
                             // If completing a recurring task, generate next instance
-                            console.log('[Recurrence Debug] Completing task:', taskToComplete.title);
-                            console.log('[Recurrence Debug] Has recurrence?', taskToComplete.recurrence);
-                            console.log('[Recurrence Debug] Has due_date?', taskToComplete.due_date);
+                            if (DEBUG_KANBAN) {
+                                console.log('[Recurrence Debug] Completing task:', taskToComplete.title);
+                                console.log('[Recurrence Debug] Has recurrence?', taskToComplete.recurrence);
+                                console.log('[Recurrence Debug] Has due_date?', taskToComplete.due_date);
+                            }
                             if (checkboxEl.checked && taskToComplete.recurrence && taskToComplete.recurrence.type && taskToComplete.due_date) {
-                                console.log('[Recurrence Debug] Generating next instance...');
+                                if (DEBUG_KANBAN) { console.log('[Recurrence Debug] Generating next instance...'); }
                                 var nextTask = generateNextRecurrence(taskToComplete);
-                                console.log('[Recurrence Debug] Next task generated:', nextTask);
+                                if (DEBUG_KANBAN) { console.log('[Recurrence Debug] Next task generated:', nextTask); }
                                 if (nextTask) {
                                     currentTasks.push(nextTask);
-                                    console.log('[Recurrence Debug] Added to currentTasks, new length:', currentTasks.length);
+                                    if (DEBUG_KANBAN) { console.log('[Recurrence Debug] Added to currentTasks, new length:', currentTasks.length); }
                                 }
                             }
 
@@ -4157,14 +4161,16 @@ define([
                                     endDate: $(endDateInput).val() || ''
                                 };
                             }
-                            console.log('[Recurrence Save] Setting recurrence on task:', taskData.taskIndex, 'in project:', taskData.projectId);
-                            console.log('[Recurrence Save] New recurrence value:', newRecurrence);
+                            if (DEBUG_KANBAN) {
+                                console.log('[Recurrence Save] Setting recurrence on task:', taskData.taskIndex, 'in project:', taskData.projectId);
+                                console.log('[Recurrence Save] New recurrence value:', newRecurrence);
+                            }
 
                             var currentTasks = item.tasks.slice();
                             currentTasks[taskData.taskIndex] = Object.assign({}, currentTasks[taskData.taskIndex], {
                                 recurrence: newRecurrence
                             });
-                            console.log('[Recurrence Save] Updated task:', currentTasks[taskData.taskIndex]);
+                            if (DEBUG_KANBAN) { console.log('[Recurrence Save] Updated task:', currentTasks[taskData.taskIndex]); }
                             item.tasks = currentTasks;
                             framework.localChange();
                             updateBoards(framework, kanban, kanban.options.boards);

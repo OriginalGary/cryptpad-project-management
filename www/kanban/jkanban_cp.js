@@ -411,7 +411,6 @@ define([
                             index2 = list.length;
                         }
 
-                        console.log("Switch " + index1 + " and " + index2);
                         if (index1 < index2) {
                             index2 = index2 - 1;
                         }
@@ -455,7 +454,6 @@ define([
                         }
                     })
                     .on('dragend', function (el) {
-                        console.log("In dragend");
                         el.classList.remove('is-moving');
                         self.options.dragendEl(el);
                         $('.kanban-trash').removeClass('kanban-trash-suggest');
@@ -466,7 +464,6 @@ define([
                         }
                     })
                     .on('cancel', function (el, container, source) {
-                        console.log("In cancel");
                         el.classList.remove('is-moving');
                         var boardId = $(source).closest('kanban-board').data('id');
                         self.options.dragcancelEl(el, boardId);
@@ -488,8 +485,6 @@ define([
                     .on('drop', function (el, target, source, sibling) {
                         self.enableAllBoards();
                         el.classList.remove('is-moving');
-
-                        console.log("In drop");
 
                         var id1 = String($(el).attr('data-eid'));
                         var boardId = String($(source).closest('.kanban-board').data('id'));
