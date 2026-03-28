@@ -6,7 +6,7 @@ name: Trigger E2E tests
 
 on:
   push:
-    branches: [ staging ]
+    branches: [ main ]
 
 permissions: {}
 
