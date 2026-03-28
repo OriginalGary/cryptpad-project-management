@@ -1,0 +1,16 @@
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ai-pr-review:
+    uses: open-paws/Open-Paws-Automations/.github/workflows/ai-pr-review.yml@aef97ee867ec1879aad78cea557d0114b731b2eb # main
+    secrets:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
