@@ -63,7 +63,7 @@ define([
 
     // Debug flag for kanban diagnostic logging. Set to true to enable console output
     // for data synchronization and other diagnostic messages.
-    var DEBUG_KANBAN = true;
+    var DEBUG_KANBAN = false;
 
     // Scoring dimensions - defined at module level so all functions can access
     var scoringDimensions = [
@@ -116,6 +116,45 @@ define([
             return '#000000';
         }
         return '#FFFFFF';
+    };
+
+    // Validate a color value before interpolating into style attributes.
+    // Returns a safe hex string (with #) or '' for invalid/unsafe input.
+    var sanitizeColor = function (color) {
+        if (!color) { return ''; }
+        if (/^#?[0-9a-f]{6}$/i.test(color)) {
+            return color.charAt(0) === '#' ? color : '#' + color;
+        }
+        if (/^color\d+$/.test(color)) { return color; } // palette class name
+        return '';
+    };
+
+    // Parse a YYYY-MM-DD string as local time instead of UTC.
+    // new Date('YYYY-MM-DD') is parsed as UTC per ECMAScript spec, which shifts
+    // to the previous day in negative-UTC-offset timezones.
+    var parseDateLocal = function (dateStr) {
+        if (!dateStr) { return null; }
+        var parts = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (parts) {
+            var year = parseInt(parts[1], 10);
+            var monthIndex = parseInt(parts[2], 10) - 1;
+            var day = parseInt(parts[3], 10);
+            var d = new Date(year, monthIndex, day);
+            // Reject impossible dates like Feb 31 (Date normalizes overflow)
+            if (d.getFullYear() !== year || d.getMonth() !== monthIndex || d.getDate() !== day) {
+                return null;
+            }
+            return d;
+        }
+        var d2 = new Date(dateStr);
+        return isNaN(d2.getTime()) ? null : d2;
+    };
+
+    // DST-safe day number: returns a whole-number day index in UTC so that
+    // subtracting two toDayNumber results always yields exact calendar days,
+    // even across DST boundaries where local midnight-to-midnight can be 23h or 25h.
+    var toDayNumber = function (d) {
+        return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
     };
 
     var getAvatar = function (cursor, noClear) {
@@ -591,7 +630,7 @@ define([
         };
 
         var show = function (_id) {
-            id = Number(_id);
+            id = String(_id);
             dataObject = kanban.getItemJSON(id);
             if (!dataObject) { return; }
 
@@ -612,7 +651,7 @@ define([
         });
 
         var toggle = function (_id) {
-            if ($(sidebar).is(':visible') && id === Number(_id)) {
+            if ($(sidebar).is(':visible') && id === String(_id)) {
                 hide();
                 return;
             }
@@ -855,7 +894,7 @@ define([
                     // Title (Large, prominent)
                     h('div.cp-kanban-title-section', [
                         titleInput = h('input#cp-kanban-edit-title', {
-                            placeholder: 'Task title...',
+                            placeholder: 'Project title...',
                             class: 'cp-kanban-title-input'
                         })
                     ]),
@@ -969,7 +1008,7 @@ define([
                 Object.keys(remoteCursors).forEach(function (nid) {
                     var c = remoteCursors[nid];
                     var avatar = getAvatar(c, true);
-                    if (Number(c.item) === Number(id) || Number(c.board) === Number(id)) {
+                    if (String(c.item) === String(id) || String(c.board) === String(id)) {
                         $conflict.append(avatar);
                         i++;
                     }
@@ -1210,11 +1249,8 @@ define([
             });
             availableAssignees.sort();
 
-            if (availableAssignees.length === 0) {
-                $assigneeContainer.append(h('em', { style: 'color: #888; font-size: 12px;' }, 'No contacts available'));
-                return;
-            }
-
+            // Render checkboxes for known assignees
+            var $checkboxList = $(h('div.cp-kanban-assignee-list'));
             availableAssignees.forEach(function (name) {
                 var isChecked = selectedAssignees.some(function (s) {
                     return s.toLowerCase() === name.toLowerCase();
@@ -1232,7 +1268,6 @@ define([
                 ]);
 
                 $(checkbox).off('change').on('change', function () {
-                    // Get all checked assignees
                     var checkedAssignees = [];
                     $assigneeContainer.find('.cp-kanban-assignee-checkbox:checked').each(function () {
                         checkedAssignees.push($(this).val());
@@ -1241,7 +1276,44 @@ define([
                     commit();
                 });
 
-                $assigneeContainer.append(label);
+                $checkboxList.append(label);
+            });
+            $assigneeContainer.append($checkboxList);
+
+            // Add free-text input for adding assignees manually
+            var addInput = h('input.cp-kanban-assignee-add-input', {
+                type: 'text',
+                placeholder: 'Type a name and press Enter...',
+                maxlength: '100'
+            });
+            var addBtn = h('button.btn.btn-primary.cp-kanban-assignee-add-btn', [
+                h('i.fa.fa-plus'),
+                h('span', 'Add')
+            ]);
+            var $addForm = $(h('div.cp-kanban-assignee-add-form', [addInput, addBtn]));
+            $assigneeContainer.append($addForm);
+
+            var addAssignee = function () {
+                var newName = $(addInput).val().trim();
+                if (!newName) { return; }
+                $(addInput).val('');
+                // Merge with current assignees
+                var current = (dataObject.assignee || '').split(',').map(function (a) { return a.trim(); }).filter(function (a) { return a; });
+                if (current.some(function (a) { return a.toLowerCase() === newName.toLowerCase(); })) { return; }
+                current.push(newName);
+                dataObject.assignee = current.join(', ');
+                commit();
+                // Re-render to show the new checkbox
+                renderAssigneeCheckboxes(dataObject.assignee);
+            };
+
+            $(addBtn).off('click').on('click', addAssignee);
+            $(addInput).off('keydown').on('keydown', function (e) {
+                if (e.which === 13) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    addAssignee();
+                }
             });
         };
 
@@ -1334,6 +1406,7 @@ define([
         };
 
         // Scoring Sliders - Store in CryptPad's native data structure
+        var scoringCommitTimeout;
         var scoringData = {};
 
         // Update composite score display with progress bar
@@ -1380,13 +1453,19 @@ define([
                 $display.text(value);
                 scoringData[key] = value;
 
-                // Update composite score
+                // Update composite score display immediately
                 updateCompositeScore();
 
-                // Save to CryptPad's native data structure
+                // Update data immediately so the value is current
                 dataObject.scoring = dataObject.scoring || {};
                 dataObject.scoring[key] = value;
-                commit(); // This saves to CryptPad like assignee and due_date
+
+                // Debounce the board sync to avoid excessive redraws
+                // while the user is still dragging the slider
+                clearTimeout(scoringCommitTimeout);
+                scoringCommitTimeout = setTimeout(function () {
+                    commit();
+                }, 300);
             });
         });
 
@@ -1477,11 +1556,23 @@ define([
                 }
             });
 
-            // 3. Add any existing assignees from tasks (historical names)
+            // 3. Add any existing assignees from projects and tasks (historical names)
             var boards = kanban.options.boards || {};
             var items = boards.items || {};
             Object.keys(items).forEach(function (itemId) {
                 var item = items[itemId];
+                // Project-level assignees
+                var projectAssignee = (item.assignee || '').trim();
+                if (projectAssignee) {
+                    projectAssignee.split(',').forEach(function (a) {
+                        var name = a.trim();
+                        if (name && !seenNames[name.toLowerCase()]) {
+                            seenNames[name.toLowerCase()] = true;
+                            assignees.push(name);
+                        }
+                    });
+                }
+                // Task-level assignees
                 if (Array.isArray(item.tasks)) {
                     item.tasks.forEach(function (task) {
                         var assignee = (task.assignee || '').trim();
@@ -1784,7 +1875,7 @@ define([
                         if (!yes) { return; }
                         var newDeps = [];
                         $(modalContent).find('input:checked').each(function () {
-                            var taskId = parseInt($(this).attr('data-task-id'));
+                            var taskId = String($(this).attr('data-task-id') || '');
                             if (taskId) { newDeps.push(taskId); }
                         });
                         task.dependencies = newDeps;
@@ -1916,7 +2007,7 @@ define([
         var button = [{
             className: 'danger left',
             name: Messages.kanban_delete,
-            confirm: true,
+            confirm: { timeout: 5000 },
             onClick: function (/*button*/) {
                 var boards = kanban.options.boards || {};
                 if (isBoard) {
@@ -1968,7 +2059,7 @@ define([
         var setId = function (_isBoard, _id) {
             // Reset the modal with a new id
             isBoard = _isBoard;
-            id = Number(_id);
+            id = String(_id);
 
             // Card-specific sections (hide when editing a board)
             var cardOnlySections = '.cp-kanban-status-row, .cp-kanban-assignee-row, .cp-kanban-dates-row, .cp-kanban-tags-row, .cp-kanban-scoring-row, .cp-kanban-tasks-section, .cp-kanban-description-section, .cp-kanban-project-deps-row';
@@ -1992,8 +2083,10 @@ define([
                 $(content).find(cardOnlySections).show();
                 $(content).find(boardOnlySections).hide();
             }
-            // Also reset the buttons
-            $modal.find('nav').after(UI.dialog.getButtons(button)).remove();
+            // Also reset the buttons, but only if no confirmation is in progress
+            if (!$modal.find('.cp-button-confirm').length) {
+                $modal.find('nav').after(UI.dialog.getButtons(button)).remove();
+            }
         };
 
         onRemoteChange.reg(function () {
@@ -2029,7 +2122,7 @@ define([
             getValue: function () {
                 var selected = [];
                 $projectDeps.find('.cp-kanban-project-dep-checkbox:checked').each(function () {
-                    selected.push(Number($(this).val()));
+                    selected.push(String($(this).val()));
                 });
                 return selected;
             },
@@ -2037,7 +2130,8 @@ define([
                 if (isBoard) { return; } // Dependencies are not available for boards
 
                 $projectDeps.empty();
-                deps = deps || [];
+                if (!Array.isArray(deps)) { deps = []; }
+                deps = deps.map(String);
 
                 // Get all projects (items) except the current one
                 var boards = kanban.options.boards || {};
@@ -2045,10 +2139,10 @@ define([
                 var currentId = id;
 
                 var otherProjects = Object.keys(items).filter(function (itemId) {
-                    return Number(itemId) !== currentId;
+                    return String(itemId) !== String(currentId);
                 }).map(function (itemId) {
                     return {
-                        id: Number(itemId),
+                        id: itemId,
                         title: items[itemId].title || 'Untitled'
                     };
                 }).sort(function (a, b) {
@@ -2077,7 +2171,7 @@ define([
                     $(checkbox).off('change').on('change', function () {
                         var selected = [];
                         $projectDeps.find('.cp-kanban-project-dep-checkbox:checked').each(function () {
-                            selected.push(Number($(this).val()));
+                            selected.push(String($(this).val()));
                         });
                         dataObject.dependencies = selected;
                         commit();
@@ -2136,12 +2230,12 @@ define([
 
         // Update status to show which board the item is on
         var boardName = '';
-        var itemId = Number(eid);
+        var itemId = String(eid);
         Object.keys(boards.data || {}).forEach(function (boardId) {
             var board = boards.data[boardId];
             if (board && Array.isArray(board.item)) {
                 var found = board.item.some(function (id) {
-                    return Number(id) === itemId;
+                    return String(id) === itemId;
                 });
                 if (found) {
                     boardName = board.title || 'Untitled';
@@ -2212,11 +2306,11 @@ define([
             var shiftItem = function (direction, el) {
                 var board = $(el).closest('.kanban-board');
                 var boards = kanban.options.boards;
-                var elId = parseInt($(el).attr("data-eid"));
-                var boardId = parseInt($(board).attr("data-id"));
+                var elId = String($(el).attr("data-eid"));
+                var boardId = String($(board).attr("data-id"));
                 var boardItems = boards.data[boardId].item;
-                var index = boardItems.indexOf(elId);
-                var boardIndex = boards.list.indexOf(parseInt(boardId));
+                var index = boardItems.findIndex(function(id) { return String(id) === elId; });
+                var boardIndex = boards.list.findIndex(function(id) { return String(id) === boardId; });
                 let nextBoardItems;
 
                 if (direction === 'up' && index > 0) {
@@ -2233,8 +2327,8 @@ define([
             };
 
             var shiftBoards = function (direction, el) {
-                var elId = $(el).attr("data-id");
-                var index = kanban.options.boards.list.indexOf(parseInt(elId));
+                var elId = String($(el).attr("data-id"));
+                var index = kanban.options.boards.list.findIndex(function(id) { return String(id) === elId; });
                 if (direction === 'left' && index > 0) {
                     move(kanban.options.boards.list, index, index - 1);
                 } else if (direction === 'right' && index < kanban.options.boards.list.length - 1) {
@@ -3052,7 +3146,8 @@ define([
                 // All other presets require a due date
                 if (!dateStr) { return false; }
 
-                var itemDate = new Date(dateStr);
+                var itemDate = parseDateLocal(dateStr);
+                if (!itemDate) { return false; }
                 itemDate.setHours(0, 0, 0, 0);
 
                 switch (preset) {
@@ -3767,55 +3862,43 @@ define([
                 // Filtering is done via currentFilters which are shared across all views
 
                 // Helper to format relative due date
+                // Uses Math.floor consistently so "Due in 2 weeks" means at least
+                // 14 full days remain, matching the pipeline card view in jkanban_cp.js.
                 var formatRelativeDueDate = function (dateStr) {
                     if (!dateStr) { return ''; }
-                    var dateObj = new Date(dateStr);
-                    if (isNaN(dateObj.getTime())) { return ''; }
+                    var dateObj = parseDateLocal(dateStr);
+                    if (!dateObj) { return ''; }
 
                     var today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    dateObj.setHours(0, 0, 0, 0);
-
-                    var diffMs = dateObj - today;
-                    var diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+                    var diffDays = toDayNumber(dateObj) - toDayNumber(today);
 
                     if (diffDays < 0) {
                         var overdueDays = Math.abs(diffDays);
                         if (overdueDays === 1) { return 'Overdue by 1 day'; }
                         if (overdueDays < 7) { return 'Overdue by ' + overdueDays + ' days'; }
-                        if (overdueDays < 30) {
-                            var weeks = Math.round(overdueDays / 7);
-                            return 'Overdue by ' + weeks + ' week' + (weeks !== 1 ? 's' : '');
-                        }
-                        var months = Math.round(overdueDays / 30);
-                        return 'Overdue by ' + months + ' month' + (months !== 1 ? 's' : '');
-                    } else if (diffDays === 0) {
-                        return 'Due today';
-                    } else if (diffDays === 1) {
-                        return 'Due tomorrow';
-                    } else if (diffDays < 7) {
-                        return 'Due in ' + diffDays + ' days';
-                    } else if (diffDays < 30) {
-                        var weeksAhead = Math.round(diffDays / 7);
-                        return 'Due in ' + weeksAhead + ' week' + (weeksAhead !== 1 ? 's' : '');
-                    } else {
-                        var monthsAhead = Math.round(diffDays / 30);
-                        return 'Due in ' + monthsAhead + ' month' + (monthsAhead !== 1 ? 's' : '');
+                        if (overdueDays < 14) { return 'Overdue by 1 week'; }
+                        var weeks = Math.floor(overdueDays / 7);
+                        return 'Overdue by ' + weeks + ' week' + (weeks !== 1 ? 's' : '');
                     }
+                    if (diffDays === 0) { return 'Due today'; }
+                    if (diffDays === 1) { return 'Due tomorrow'; }
+                    if (diffDays < 7) { return 'Due in ' + diffDays + ' days'; }
+                    if (diffDays < 30) {
+                        var weeksAhead = Math.floor(diffDays / 7);
+                        return 'Due in ' + weeksAhead + ' week' + (weeksAhead !== 1 ? 's' : '');
+                    }
+                    var monthsAhead = Math.floor(diffDays / 30);
+                    return 'Due in ' + monthsAhead + ' month' + (monthsAhead !== 1 ? 's' : '');
                 };
 
                 // Helper to get due date urgency class
                 var getDueDateUrgencyClass = function (dateStr) {
                     if (!dateStr) { return ''; }
-                    var dateObj = new Date(dateStr);
-                    if (isNaN(dateObj.getTime())) { return ''; }
+                    var dateObj = parseDateLocal(dateStr);
+                    if (!dateObj) { return ''; }
 
                     var today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    dateObj.setHours(0, 0, 0, 0);
-
-                    var diffMs = dateObj - today;
-                    var diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+                    var diffDays = toDayNumber(dateObj) - toDayNumber(today);
 
                     if (diffDays < 0) { return 'cp-due-overdue'; } // Overdue - red
                     if (diffDays <= 1) { return 'cp-due-urgent'; } // Today/tomorrow - red
@@ -3897,25 +3980,27 @@ define([
 
                     // Checkbox handler
                     $(checkbox).on('change', function () {
-                        console.log('[Checkbox Debug] Checkbox changed for task:', task.title, 'checked:', this.checked);
-                        console.log('[Checkbox Debug] taskData:', taskData);
+                        if (DEBUG_KANBAN) {
+                            console.log('[Checkbox Debug] Checkbox changed for task:', task.title, 'checked:', this.checked);
+                            console.log('[Checkbox Debug] taskData:', taskData);
+                        }
                         var checkboxEl = this;
                         var boards = kanban.options.boards || {};
                         var item = boards.items[taskData.projectId];
-                        console.log('[Checkbox Debug] Found item:', item ? item.title : 'NOT FOUND');
+                        if (DEBUG_KANBAN) { console.log('[Checkbox Debug] Found item:', item ? item.title : 'NOT FOUND'); }
                         if (!item || !Array.isArray(item.tasks)) {
-                            console.log('[Checkbox Debug] ERROR: item or item.tasks not found');
+                            if (DEBUG_KANBAN) { console.log('[Checkbox Debug] ERROR: item or item.tasks not found'); }
                             return;
                         }
 
                         var currentTasks = item.tasks.slice();
-                        console.log('[Checkbox Debug] currentTasks length:', currentTasks.length, 'looking for index:', taskData.taskIndex);
+                        if (DEBUG_KANBAN) { console.log('[Checkbox Debug] currentTasks length:', currentTasks.length, 'looking for index:', taskData.taskIndex); }
                         var taskToComplete = currentTasks[taskData.taskIndex];
                         if (!taskToComplete) {
-                            console.log('[Checkbox Debug] ERROR: taskToComplete not found at index', taskData.taskIndex);
+                            if (DEBUG_KANBAN) { console.log('[Checkbox Debug] ERROR: taskToComplete not found at index', taskData.taskIndex); }
                             return;
                         }
-                        console.log('[Checkbox Debug] taskToComplete:', taskToComplete.title, 'recurrence:', taskToComplete.recurrence, 'due_date:', taskToComplete.due_date);
+                        if (DEBUG_KANBAN) { console.log('[Checkbox Debug] taskToComplete:', taskToComplete.title, 'recurrence:', taskToComplete.recurrence, 'due_date:', taskToComplete.due_date); }
 
                         var completeTaskAction = function () {
                             currentTasks[taskData.taskIndex] = Object.assign({}, currentTasks[taskData.taskIndex], {
@@ -3923,16 +4008,18 @@ define([
                             });
 
                             // If completing a recurring task, generate next instance
-                            console.log('[Recurrence Debug] Completing task:', taskToComplete.title);
-                            console.log('[Recurrence Debug] Has recurrence?', taskToComplete.recurrence);
-                            console.log('[Recurrence Debug] Has due_date?', taskToComplete.due_date);
+                            if (DEBUG_KANBAN) {
+                                console.log('[Recurrence Debug] Completing task:', taskToComplete.title);
+                                console.log('[Recurrence Debug] Has recurrence?', taskToComplete.recurrence);
+                                console.log('[Recurrence Debug] Has due_date?', taskToComplete.due_date);
+                            }
                             if (checkboxEl.checked && taskToComplete.recurrence && taskToComplete.recurrence.type && taskToComplete.due_date) {
-                                console.log('[Recurrence Debug] Generating next instance...');
+                                if (DEBUG_KANBAN) { console.log('[Recurrence Debug] Generating next instance...'); }
                                 var nextTask = generateNextRecurrence(taskToComplete);
-                                console.log('[Recurrence Debug] Next task generated:', nextTask);
+                                if (DEBUG_KANBAN) { console.log('[Recurrence Debug] Next task generated:', nextTask); }
                                 if (nextTask) {
                                     currentTasks.push(nextTask);
-                                    console.log('[Recurrence Debug] Added to currentTasks, new length:', currentTasks.length);
+                                    if (DEBUG_KANBAN) { console.log('[Recurrence Debug] Added to currentTasks, new length:', currentTasks.length); }
                                 }
                             }
 
@@ -4094,14 +4181,16 @@ define([
                                     endDate: $(endDateInput).val() || ''
                                 };
                             }
-                            console.log('[Recurrence Save] Setting recurrence on task:', taskData.taskIndex, 'in project:', taskData.projectId);
-                            console.log('[Recurrence Save] New recurrence value:', newRecurrence);
+                            if (DEBUG_KANBAN) {
+                                console.log('[Recurrence Save] Setting recurrence on task:', taskData.taskIndex, 'in project:', taskData.projectId);
+                                console.log('[Recurrence Save] New recurrence value:', newRecurrence);
+                            }
 
                             var currentTasks = item.tasks.slice();
                             currentTasks[taskData.taskIndex] = Object.assign({}, currentTasks[taskData.taskIndex], {
                                 recurrence: newRecurrence
                             });
-                            console.log('[Recurrence Save] Updated task:', currentTasks[taskData.taskIndex]);
+                            if (DEBUG_KANBAN) { console.log('[Recurrence Save] Updated task:', currentTasks[taskData.taskIndex]); }
                             item.tasks = currentTasks;
                             framework.localChange();
                             updateBoards(framework, kanban, kanban.options.boards);
@@ -4149,7 +4238,7 @@ define([
                             if (!yes) { return; }
                             var newDeps = [];
                             $(modalContent).find('input:checked').each(function () {
-                                var taskId = parseInt($(this).attr('data-task-id'));
+                                var taskId = String($(this).attr('data-task-id') || '');
                                 if (taskId) { newDeps.push(taskId); }
                             });
 
@@ -4213,9 +4302,7 @@ define([
             };
 
             var parseDate = function (dateStr) {
-                if (!dateStr) { return null; }
-                var d = new Date(dateStr);
-                return isNaN(d.getTime()) ? null : d;
+                return parseDateLocal(dateStr);
             };
 
             var formatDateShort = function (date) {
@@ -4225,8 +4312,7 @@ define([
             };
 
             var daysBetween = function (date1, date2) {
-                var oneDay = 24 * 60 * 60 * 1000;
-                return Math.floor((date2 - date1) / oneDay);
+                return toDayNumber(date2) - toDayNumber(date1);
             };
 
             // Render Timeline/Gantt view
@@ -4304,7 +4390,8 @@ define([
                         score: getProjectScore(item),
                         assignee: item.assignee || '',
                         tasks: item.tasks || [],
-                        color: item.color || ''
+                        color: item.color || '',
+                        dependencies: item.dependencies || []
                     });
                 });
 
@@ -4452,60 +4539,120 @@ define([
                 var headerLabelSpacer = h('div.cp-timeline-header-label-spacer');
 
                 // Build today marker (only if today is visible in viewport)
-                // Today marker is positioned using calc() to account for the 180px label column
+                // Today marker is positioned using calc() to account for the 200px label column
                 var todayDaysFromStart = daysBetween(viewportStart, today);
                 var todayOffsetPercent = (todayDaysFromStart / viewportDays) * 100;
                 var todayMarker = null;
                 if (today >= viewportStart && today <= viewportEnd) {
-                    // calc(180px + X% of (100% - 180px))
+                    // calc(200px + X% of (100% - 200px))
                     todayMarker = h('div.cp-timeline-today-marker', {
-                        style: 'left: calc(180px + ' + todayOffsetPercent + ' * (100% - 180px) / 100);'
+                        style: 'left: calc(200px + ' + todayOffsetPercent + ' * (100% - 200px) / 100);'
                     });
                 }
 
                 // Build project rows
                 var projectRows = [];
                 projects.forEach(function (project) {
+                    var hasStart = !!project.start_date;
+                    var hasEnd = !!project.due_date;
+                    var hasNoDates = !hasStart && !hasEnd;
+                    var hasPartialDates = (hasStart && !hasEnd) || (!hasStart && hasEnd);
+
                     var projectStart = project.start_date || today;
                     var projectEnd = project.due_date || new Date(projectStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-                    // Calculate position as percentage of viewport days
-                    var startDays = daysBetween(viewportStart, projectStart);
-                    var duration = Math.max(1, daysBetween(projectStart, projectEnd));
-                    var startPercent = (startDays / viewportDays) * 100;
-                    var widthPercent = Math.max((duration / viewportDays) * 100, 2); // min 2%
+                    var projectBar;
 
-                    // Skip projects that are completely outside the viewport
-                    var endPercent = startPercent + widthPercent;
-                    if (endPercent < 0 || startPercent > 100) {
-                        // Project is completely outside viewport - still show row but hide bar
+                    if (hasNoDates) {
+                        // No dates set: show a small placeholder pill instead of a full bar
+                        var noDatesTitle = project.title + '\nNo dates set';
+                        var noDatesStyle = '';
+                        var safeColor = sanitizeColor(project.color);
+                        if (safeColor) {
+                            noDatesStyle += 'border-color: ' + safeColor + ';';
+                            noDatesStyle += 'color: ' + safeColor + ';';
+                        }
+                        projectBar = h('div.cp-timeline-bar.cp-timeline-project-bar.cp-timeline-no-dates', {
+                            style: noDatesStyle,
+                            'data-id': project.id,
+                            title: noDatesTitle
+                        }, [
+                            h('span.cp-timeline-bar-content', [
+                                h('i.fa.fa-calendar-o'),
+                                h('span.cp-timeline-bar-label', 'No dates set')
+                            ])
+                        ]);
+                    } else {
+                        // Has at least one date: calculate bar position
+                        if (hasStart && !hasEnd) {
+                            // Only start date: show a short bar from start, open-ended
+                            projectEnd = new Date(projectStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+                        } else if (!hasStart && hasEnd) {
+                            // Only end date: show a short bar leading up to end
+                            projectStart = new Date(projectEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+                        }
+
+                        // Calculate position as percentage of viewport days
+                        var startDays = daysBetween(viewportStart, projectStart);
+                        var duration = Math.max(1, daysBetween(projectStart, projectEnd));
+                        var startPercent = (startDays / viewportDays) * 100;
+                        var widthPercent = Math.max((duration / viewportDays) * 100, 2); // min 2%
+
+                        // Skip projects that are completely outside the viewport
+                        var endPercent = startPercent + widthPercent;
+                        if (endPercent < 0 || startPercent > 100) {
+                            // Project is completely outside viewport - still show row but hide bar
+                        }
+
+                        var projectBarStyle = 'left: ' + startPercent + '%; width: ' + widthPercent + '%;';
+                        var partialClass = '';
+                        if (hasPartialDates) {
+                            partialClass = '.cp-timeline-partial-dates';
+                            if (hasStart && !hasEnd) {
+                                partialClass += '.cp-timeline-no-end';
+                            } else {
+                                partialClass += '.cp-timeline-no-start';
+                            }
+                        }
+                        var safeBarColor = sanitizeColor(project.color);
+                        if (safeBarColor) {
+                            projectBarStyle += ' background-color: ' + safeBarColor + ';';
+                            projectBarStyle += ' color: ' + getTextColor(safeBarColor) + ';';
+                        }
+                        // Build project bar label with indicators
+                        var dateLabel = '';
+                        if (hasPartialDates) {
+                            dateLabel = hasStart ? ' (no end date)' : ' (no start date)';
+                        }
+                        var projectBarLabelContent = [h('span.cp-timeline-bar-label', project.title + dateLabel)];
+
+                        // Add dependency indicator for project
+                        var projectDepCount = (project.dependencies || []).length;
+                        if (projectDepCount > 0) {
+                            projectBarLabelContent.push(h('span.cp-timeline-dep-indicator', {
+                                title: projectDepCount + ' dependenc' + (projectDepCount === 1 ? 'y' : 'ies')
+                            }, [h('i.fa.fa-link'), ' ' + projectDepCount]));
+                        }
+
+                        var barTooltip = project.title + '\n';
+                        if (hasStart && hasEnd) {
+                            barTooltip += formatDateShort(projectStart) + ' - ' + formatDateShort(projectEnd);
+                        } else if (hasStart) {
+                            barTooltip += 'Starts: ' + formatDateShort(projectStart) + ' (no end date)';
+                        } else {
+                            barTooltip += '(no start date) Ends: ' + formatDateShort(projectEnd);
+                        }
+
+                        projectBar = h('div.cp-timeline-bar.cp-timeline-project-bar' + partialClass, {
+                            style: projectBarStyle,
+                            'data-id': project.id,
+                            title: barTooltip
+                        }, [
+                            h('span.cp-timeline-bar-content', projectBarLabelContent),
+                            h('div.cp-timeline-bar-resize-handle.left'),
+                            h('div.cp-timeline-bar-resize-handle.right')
+                        ]);
                     }
-
-                    var projectBarStyle = 'left: ' + startPercent + '%; width: ' + widthPercent + '%;';
-                    if (project.color) {
-                        projectBarStyle += ' background-color: ' + project.color + ';';
-                        projectBarStyle += ' color: ' + getTextColor(project.color) + ';';
-                    }
-                    // Build project bar label with indicators
-                    var projectBarLabelContent = [h('span.cp-timeline-bar-label', project.title)];
-
-                    // Add dependency indicator for project
-                    var projectDepCount = (project.dependencies || []).length;
-                    if (projectDepCount > 0) {
-                        projectBarLabelContent.push(h('span.cp-timeline-dep-indicator', {
-                            title: projectDepCount + ' dependenc' + (projectDepCount === 1 ? 'y' : 'ies')
-                        }, [h('i.fa.fa-link'), ' ' + projectDepCount]));
-                    }
-
-                    var projectBar = h('div.cp-timeline-bar.cp-timeline-project-bar', {
-                        style: projectBarStyle,
-                        'data-id': project.id,
-                        title: project.title + '\n' + formatDateShort(projectStart) + ' - ' + formatDateShort(projectEnd)
-                    }, [
-                        h('span.cp-timeline-bar-content', projectBarLabelContent),
-                        h('div.cp-timeline-bar-resize-handle.left'),
-                        h('div.cp-timeline-bar-resize-handle.right')
-                    ]);
 
                     // Click to edit
                     $(projectBar).on('click', function (e) {
@@ -4690,56 +4837,117 @@ define([
                         });
                     };
 
-                    setupResizeHandlers($(projectBar), project.id, false, null);
+                    // Only enable drag/resize for bars with at least one date
+                    if (!hasNoDates) {
+                        setupResizeHandlers($(projectBar), project.id, false, null);
+                    }
 
                     // Task bars (nested under project)
                     var taskBars = [];
                     project.tasks.forEach(function (task, taskIndex) {
-                        var taskStart = parseDate(task.start_date) || projectStart;
-                        var taskEnd = parseDate(task.due_date) || new Date(taskStart.getTime() + 3 * 24 * 60 * 60 * 1000);
+                        var taskHasStart = !!parseDate(task.start_date);
+                        var taskHasEnd = !!parseDate(task.due_date);
+                        var taskHasNoDates = !taskHasStart && !taskHasEnd;
+                        var taskHasPartialDates = (taskHasStart && !taskHasEnd) || (!taskHasStart && taskHasEnd);
 
-                        // Calculate task position as percentage of viewport days
-                        var taskStartDays = daysBetween(viewportStart, taskStart);
-                        var taskDuration = Math.max(1, daysBetween(taskStart, taskEnd));
-                        var taskStartPercent = (taskStartDays / viewportDays) * 100;
-                        var taskWidthPercent = Math.max((taskDuration / viewportDays) * 100, 1.5); // min 1.5%
+                        var taskBar;
 
-                        // Task bar inherits lighter version of parent project color
-                        var taskBarStyle = 'left: ' + taskStartPercent + '%; width: ' + taskWidthPercent + '%;';
-                        if (project.color) {
-                            // Use project color with transparency for task bars
-                            taskBarStyle += ' background-color: ' + project.color + '; opacity: 0.7;';
-                            taskBarStyle += ' color: ' + getTextColor(project.color) + ';';
+                        if (taskHasNoDates) {
+                            // No dates on task: show placeholder pill
+                            var taskNoDatesStyle = '';
+                            var safeTaskColor = sanitizeColor(project.color);
+                            if (safeTaskColor) {
+                                taskNoDatesStyle += 'border-color: ' + safeTaskColor + ';';
+                                taskNoDatesStyle += 'color: ' + safeTaskColor + ';';
+                            }
+                            taskBar = h('div.cp-timeline-bar.cp-timeline-task-bar.cp-timeline-no-dates' + (task.done ? '.done' : ''), {
+                                style: taskNoDatesStyle,
+                                title: (task.title || 'Untitled task') + '\nNo dates set'
+                            }, [
+                                h('span.cp-timeline-bar-content', [
+                                    h('i.fa.fa-calendar-o'),
+                                    h('span.cp-timeline-bar-label', 'No dates')
+                                ])
+                            ]);
+                        } else {
+                            var taskStart = parseDate(task.start_date);
+                            var taskEnd = parseDate(task.due_date);
+
+                            // Handle partial dates
+                            if (taskHasStart && !taskHasEnd) {
+                                taskStart = parseDate(task.start_date);
+                                taskEnd = new Date(taskStart.getTime() + 3 * 24 * 60 * 60 * 1000);
+                            } else if (!taskHasStart && taskHasEnd) {
+                                taskEnd = parseDate(task.due_date);
+                                taskStart = new Date(taskEnd.getTime() - 3 * 24 * 60 * 60 * 1000);
+                            }
+
+                            // Calculate task position as percentage of viewport days
+                            var taskStartDays = daysBetween(viewportStart, taskStart);
+                            var taskDuration = Math.max(1, daysBetween(taskStart, taskEnd));
+                            var taskStartPercent = (taskStartDays / viewportDays) * 100;
+                            var taskWidthPercent = Math.max((taskDuration / viewportDays) * 100, 1.5); // min 1.5%
+
+                            // Task bar inherits lighter version of parent project color
+                            var taskBarStyle = 'left: ' + taskStartPercent + '%; width: ' + taskWidthPercent + '%;';
+                            var taskPartialClass = '';
+                            if (taskHasPartialDates) {
+                                taskPartialClass = '.cp-timeline-partial-dates';
+                                if (taskHasStart && !taskHasEnd) {
+                                    taskPartialClass += '.cp-timeline-no-end';
+                                } else {
+                                    taskPartialClass += '.cp-timeline-no-start';
+                                }
+                            }
+                            var safeTaskBarColor = sanitizeColor(project.color);
+                            if (safeTaskBarColor) {
+                                // Use project color with transparency for task bars
+                                taskBarStyle += ' background-color: ' + safeTaskBarColor + '; opacity: 0.7;';
+                                taskBarStyle += ' color: ' + getTextColor(safeTaskBarColor) + ';';
+                            }
+
+                            // Build task bar label with indicators
+                            var taskDateLabel = '';
+                            if (taskHasPartialDates) {
+                                taskDateLabel = taskHasStart ? ' (no end)' : ' (no start)';
+                            }
+                            var taskBarLabelContent = [h('span.cp-timeline-bar-label', (task.title || 'Task') + taskDateLabel)];
+
+                            // Add recurrence indicator
+                            if (task.recurrence && task.recurrence.type) {
+                                taskBarLabelContent.push(h('i.fa.fa-repeat.cp-timeline-recurrence-icon', {
+                                    title: 'Recurring: ' + task.recurrence.type + (task.recurrence.interval > 1 ? ' (every ' + task.recurrence.interval + ')' : '')
+                                }));
+                            }
+
+                            // Add dependency indicator
+                            var taskDepCount = (task.dependencies || []).length;
+                            if (taskDepCount > 0) {
+                                taskBarLabelContent.push(h('span.cp-timeline-dep-indicator', {
+                                    title: taskDepCount + ' dependenc' + (taskDepCount === 1 ? 'y' : 'ies')
+                                }, [h('i.fa.fa-link')]));
+                            }
+
+                            var taskTooltip = (task.title || 'Untitled task') + '\n';
+                            if (taskHasStart && taskHasEnd) {
+                                taskTooltip += formatDateShort(taskStart) + ' - ' + formatDateShort(taskEnd);
+                            } else if (taskHasStart) {
+                                taskTooltip += 'Starts: ' + formatDateShort(taskStart) + ' (no end date)';
+                            } else {
+                                taskTooltip += '(no start date) Ends: ' + formatDateShort(taskEnd);
+                            }
+
+                            taskBar = h('div.cp-timeline-bar.cp-timeline-task-bar' + taskPartialClass + (task.done ? '.done' : ''), {
+                                style: taskBarStyle,
+                                title: taskTooltip
+                            }, [
+                                h('span.cp-timeline-bar-content', taskBarLabelContent),
+                                h('div.cp-timeline-bar-resize-handle.left'),
+                                h('div.cp-timeline-bar-resize-handle.right')
+                            ]);
+
+                            setupResizeHandlers($(taskBar), project.id, true, taskIndex);
                         }
-
-                        // Build task bar label with indicators
-                        var taskBarLabelContent = [h('span.cp-timeline-bar-label', task.title || 'Task')];
-
-                        // Add recurrence indicator
-                        if (task.recurrence && task.recurrence.type) {
-                            taskBarLabelContent.push(h('i.fa.fa-repeat.cp-timeline-recurrence-icon', {
-                                title: 'Recurring: ' + task.recurrence.type + (task.recurrence.interval > 1 ? ' (every ' + task.recurrence.interval + ')' : '')
-                            }));
-                        }
-
-                        // Add dependency indicator
-                        var taskDepCount = (task.dependencies || []).length;
-                        if (taskDepCount > 0) {
-                            taskBarLabelContent.push(h('span.cp-timeline-dep-indicator', {
-                                title: taskDepCount + ' dependenc' + (taskDepCount === 1 ? 'y' : 'ies')
-                            }, [h('i.fa.fa-link')]));
-                        }
-
-                        var taskBar = h('div.cp-timeline-bar.cp-timeline-task-bar' + (task.done ? '.done' : ''), {
-                            style: taskBarStyle,
-                            title: (task.title || 'Untitled task') + '\n' + formatDateShort(taskStart) + ' - ' + formatDateShort(taskEnd)
-                        }, [
-                            h('span.cp-timeline-bar-content', taskBarLabelContent),
-                            h('div.cp-timeline-bar-resize-handle.left'),
-                            h('div.cp-timeline-bar-resize-handle.right')
-                        ]);
-
-                        setupResizeHandlers($(taskBar), project.id, true, taskIndex);
 
                         taskBars.push(h('div.cp-timeline-task-row', {
                             style: 'width: ' + viewportWidth + 'px;'
@@ -4751,7 +4959,9 @@ define([
                     }, [projectBar]);
 
                     var taskCountText = project.tasks.length === 1 ? '1 task' : project.tasks.length + ' tasks';
-                    var projectLabel = h('div.cp-timeline-row-label', [
+                    var projectLabel = h('div.cp-timeline-row-label', {
+                        title: project.title
+                    }, [
                         h('span.cp-timeline-project-name', project.title),
                         project.tasks.length > 0 ? h('span.cp-timeline-task-count', '· ' + taskCountText) : null
                     ].filter(Boolean));
@@ -4766,9 +4976,10 @@ define([
                     // Add task rows
                     if (taskBars.length > 0) {
                         taskBars.forEach(function (taskBar, idx) {
-                            var taskLabel = h('div.cp-timeline-row-label.cp-timeline-task-label',
-                                project.tasks[idx].title || 'Task ' + (idx + 1)
-                            );
+                            var taskTitle = project.tasks[idx].title || 'Task ' + (idx + 1);
+                            var taskLabel = h('div.cp-timeline-row-label.cp-timeline-task-label', {
+                                title: taskTitle
+                            }, taskTitle);
                             projectRows.push(h('div.cp-timeline-row.cp-timeline-task-row-container', [
                                 taskLabel,
                                 taskBar
@@ -4778,7 +4989,7 @@ define([
                 });
 
                 // Fixed viewport container (no scrolling)
-                // Grid has: label spacer (fixed 180px) + header (flex: 1)
+                // Grid has: label spacer (fixed 200px) + header (flex: 1)
                 var gridElements = [headerLabelSpacer, timelineHeader];
                 if (todayMarker) { gridElements.push(todayMarker); }
 
@@ -4886,43 +5097,74 @@ define([
                 tomorrow.setDate(tomorrow.getDate() + 1);
                 var endOfWeek = new Date(today);
                 endOfWeek.setDate(endOfWeek.getDate() + (7 - endOfWeek.getDay()));
-                var endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                // "This Month" = within 30 days (not limited to calendar month)
+                var thirtyDaysOut = new Date(today);
+                thirtyDaysOut.setDate(thirtyDaysOut.getDate() + 30);
+                // "Coming Up" = 31-60 days out
+                var sixtyDaysOut = new Date(today);
+                sixtyDaysOut.setDate(sixtyDaysOut.getDate() + 60);
 
                 var isToday = function (dateStr) {
                     if (!dateStr) return false;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return false;
                     d.setHours(0, 0, 0, 0);
                     return d.getTime() === today.getTime();
                 };
                 var isThisWeek = function (dateStr) {
                     if (!dateStr) return false;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return false;
                     d.setHours(0, 0, 0, 0);
                     return d > today && d <= endOfWeek;
                 };
                 var isThisMonth = function (dateStr) {
                     if (!dateStr) return false;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return false;
                     d.setHours(0, 0, 0, 0);
-                    return d > endOfWeek && d <= endOfMonth;
+                    return d > endOfWeek && d <= thirtyDaysOut;
+                };
+                var isComingUp = function (dateStr) {
+                    if (!dateStr) return false;
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return false;
+                    d.setHours(0, 0, 0, 0);
+                    return d > thirtyDaysOut && d <= sixtyDaysOut;
                 };
                 var isOverdue = function (dateStr) {
                     if (!dateStr) return false;
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return false;
                     d.setHours(0, 0, 0, 0);
                     return d < today;
                 };
                 var getDaysOverdue = function (dateStr) {
                     if (!dateStr) return 0;
-                    var d = new Date(dateStr);
-                    d.setHours(0, 0, 0, 0);
-                    return Math.floor((today - d) / (1000 * 60 * 60 * 24));
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return 0;
+                    return toDayNumber(today) - toDayNumber(d);
+                };
+                var getDaysUntil = function (dateStr) {
+                    if (!dateStr) return 0;
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return 0;
+                    return toDayNumber(d) - toDayNumber(today);
                 };
                 var formatDueDate = function (dateStr) {
                     if (!dateStr) return '';
-                    var d = new Date(dateStr);
+                    var d = parseDateLocal(dateStr);
+                    if (!d) return '';
                     var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                    return days[d.getDay()];
+                    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    var daysUntil = getDaysUntil(dateStr);
+                    // For items within the current week, just show day name
+                    if (daysUntil <= 7) {
+                        return days[d.getDay()];
+                    }
+                    // For items further out, show month and day
+                    return months[d.getMonth()] + ' ' + d.getDate();
                 };
 
                 // Calculate metrics
@@ -4940,6 +5182,7 @@ define([
                 var dueThisMonthItems = [];
                 var overdueItems = [];
                 var noDueDateItems = [];
+                var dueComingUpItems = [];
                 var blockedTasks = [];
                 var recurringTasks = [];
                 var unassignedItems = [];
@@ -5049,6 +5292,8 @@ define([
                                 dueThisWeekItems.push(taskWithContext);
                             } else if (isThisMonth(task.due_date)) {
                                 dueThisMonthItems.push(taskWithContext);
+                            } else if (isComingUp(task.due_date)) {
+                                dueComingUpItems.push(taskWithContext);
                             }
                         }
                     });
@@ -5099,6 +5344,8 @@ define([
                             dueThisWeekItems.push({ type: 'project', title: item.title || 'Untitled', id: itemId, due_date: item.due_date });
                         } else if (isThisMonth(item.due_date)) {
                             dueThisMonthItems.push({ type: 'project', title: item.title || 'Untitled', id: itemId, due_date: item.due_date });
+                        } else if (isComingUp(item.due_date)) {
+                            dueComingUpItems.push({ type: 'project', title: item.title || 'Untitled', id: itemId, due_date: item.due_date });
                         }
                     }
                 });
@@ -5192,7 +5439,8 @@ define([
                     renderDeadlineGroup('Overdue', overdueItems, 'overdue'),
                     renderDeadlineGroup('Today', dueTodayItems, 'today'),
                     renderDeadlineGroup('This Week', dueThisWeekItems, 'week'),
-                    renderDeadlineGroup('This Month', dueThisMonthItems, 'month')
+                    renderDeadlineGroup('Next 30 Days', dueThisMonthItems, 'month'),
+                    renderDeadlineGroup('Coming Up', dueComingUpItems, 'coming-up')
                 ].filter(Boolean));
 
                 // Workload by Assignee Section
@@ -5294,42 +5542,76 @@ define([
                     }))
                 ]) : null;
 
+                // Separate due-date counts by type for clarity
+                var dueTodayTaskCount = dueTodayItems.filter(function (i) { return i.type === 'task'; }).length;
+                var dueTodayProjectCount = dueTodayItems.filter(function (i) { return i.type === 'project'; }).length;
+                var dueWeekTaskCount = dueThisWeekItems.filter(function (i) { return i.type === 'task'; }).length;
+                var dueWeekProjectCount = dueThisWeekItems.filter(function (i) { return i.type === 'project'; }).length;
+                var dueMonthTaskCount = dueThisMonthItems.filter(function (i) { return i.type === 'task'; }).length;
+                var dueMonthProjectCount = dueThisMonthItems.filter(function (i) { return i.type === 'project'; }).length;
+                var noDateTaskCount = noDueDateItems.filter(function (i) { return i.type === 'task'; }).length;
+                var noDateProjectCount = noDueDateItems.filter(function (i) { return i.type === 'project'; }).length;
+
+                var formatDueDateStat = function (taskCount, projectCount) {
+                    var parts = [];
+                    if (taskCount > 0) { parts.push(taskCount + (taskCount === 1 ? ' task' : ' tasks')); }
+                    if (projectCount > 0) { parts.push(projectCount + (projectCount === 1 ? ' project' : ' projects')); }
+                    return parts.length > 0 ? parts.join(', ') : '0';
+                };
+
                 // Quick Stats Section - compact metrics with mini visualizations
                 var quickStatsSection = h('div.cp-dashboard-section.cp-dashboard-quickstats', [
                     h('h3', 'Quick Stats'),
+                    h('h4.quickstats-subheader', 'Deadlines (tasks & projects)'),
                     h('div.quickstats-grid', [
-                        // Timeline row
+                        // Timeline row - counts both tasks and projects
                         h('div.quickstat-item', [
                             h('span.quickstat-label', 'Due Today'),
-                            h('span.quickstat-value' + (dueTodayItems.length > 0 ? '.warning' : ''), String(dueTodayItems.length))
+                            h('span.quickstat-value' + (dueTodayItems.length > 0 ? '.warning' : ''),
+                                formatDueDateStat(dueTodayTaskCount, dueTodayProjectCount))
                         ]),
                         h('div.quickstat-item', [
-                            h('span.quickstat-label', 'This Week'),
-                            h('span.quickstat-value', String(dueThisWeekItems.length))
+                            h('span.quickstat-label', 'Due This Week'),
+                            h('span.quickstat-value',
+                                formatDueDateStat(dueWeekTaskCount, dueWeekProjectCount))
                         ]),
                         h('div.quickstat-item', [
-                            h('span.quickstat-label', 'This Month'),
-                            h('span.quickstat-value', String(dueThisMonthItems.length))
+                            h('span.quickstat-label', 'Next 30 Days'),
+                            h('span.quickstat-value',
+                                formatDueDateStat(dueMonthTaskCount, dueMonthProjectCount))
                         ]),
                         h('div.quickstat-item', [
-                            h('span.quickstat-label', 'No Date'),
-                            h('span.quickstat-value' + (noDueDateItems.length > 5 ? '.warning' : ''), String(noDueDateItems.length))
+                            h('span.quickstat-label', 'Coming Up'),
+                            h('span.quickstat-value', String(dueComingUpItems.length))
                         ]),
-                        // Status row
                         h('div.quickstat-item', [
-                            h('span.quickstat-label', 'Blocked'),
+                            h('span.quickstat-label', 'No Due Date'),
+                            h('span.quickstat-value' + (noDueDateItems.length > 5 ? '.warning' : ''),
+                                formatDueDateStat(noDateTaskCount, noDateProjectCount))
+                        ])
+                    ]),
+                    h('h4.quickstats-subheader', 'Task Status'),
+                    h('div.quickstats-grid', [
+                        // Status row - all task-specific
+                        h('div.quickstat-item', [
+                            h('span.quickstat-label', 'Blocked Tasks'),
                             h('span.quickstat-value' + (blockedTasks.length > 0 ? '.danger' : ''), String(blockedTasks.length))
                         ]),
                         h('div.quickstat-item', [
-                            h('span.quickstat-label', 'Recurring'),
+                            h('span.quickstat-label', 'Recurring Tasks'),
                             h('span.quickstat-value', String(recurringTasks.length))
-                        ]),
+                        ])
+                    ]),
+                    h('h4.quickstats-subheader', 'Project Status'),
+                    h('div.quickstats-grid', [
+                        // Project-specific stats
                         h('div.quickstat-item', [
-                            h('span.quickstat-label', 'Unassigned'),
+                            h('span.quickstat-label', 'Unassigned Projects'),
                             h('span.quickstat-value' + (unassignedItems.length > 3 ? '.warning' : ''), String(unassignedItems.length))
                         ]),
                         h('div.quickstat-item', [
-                            h('span.quickstat-label', 'High Priority'),
+                            h('span.quickstat-label', 'High Impact Projects'),
+                            h('span.quickstat-detail', 'score \u2265 7'),
                             h('span.quickstat-value.highlight', String(highPriorityProjects.length))
                         ])
                     ])
@@ -5504,8 +5786,7 @@ define([
             };
 
             var filterPanel = h('div.cp-kanban-filter-panel', [
-                filterToggleBtn,
-                filterPanelContent
+                filterToggleBtn
             ]);
 
             // Update card detail visibility after any redraw (respects compact mode)
@@ -5556,6 +5837,10 @@ define([
                 ])
             ]);
             $container.before(container);
+
+            // Insert the filter panel content as a sibling after controls
+            // so it flows inline and pushes board content down instead of overlapping
+            $(container).after(filterPanelContent);
 
             onRedraw.reg(function () {
                 // Redraw if new tags have been added to items
@@ -5623,20 +5908,23 @@ define([
             var data = boards.data || {};
             var list = boards.list || [];
 
-            // Remove duplicate boards
-            list = boards.list = Util.deduplicateString(list);
+            // Normalize to strings first, then deduplicate
+            list = boards.list = Util.deduplicateString((list || []).map(String));
 
             Object.keys(data).forEach(function (id) {
-                if (list.indexOf(Number(id)) === -1) {
-                    list.push(Number(id));
+                var idVal = String(id);
+                if (list.indexOf(idVal) === -1) {
+                    list.push(idVal);
                 }
-                // Remove duplicate items
+                // Normalize to strings first, then deduplicate
                 var b = data[id];
-                b.item = Util.deduplicateString(b.item || []);
+                b.item = Util.deduplicateString((b.item || []).map(String));
             });
             Object.keys(items).forEach(function (eid) {
                 var exists = Object.keys(data).some(function (id) {
-                    return (data[id].item || []).indexOf(Number(eid)) !== -1;
+                    return (data[id].item || []).some(function (itemId) {
+                        return String(itemId) === String(eid);
+                    });
                 });
                 if (!exists) { delete items[eid]; }
             });

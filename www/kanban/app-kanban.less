@@ -2133,49 +2133,9 @@
             }
 
             .cp-kanban-filter-panel-content {
-                position: absolute;
-                top: 100%;
-                left: 0;
-                z-index: 100;
-                background: @cp_kanban-board-bg;
-                border: 1px solid @kanban-border;
-                border-radius: @variables_radius;
-                box-shadow: 0 4px 12px @kanban-shadow-hover;
-                padding: 15px;
-                margin-top: 8px;
-                min-width: 300px;
-                max-width: 90vw;
-                overflow: visible;
-
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
-
-                // Override nested styles for cleaner look inside panel
-                .cp-kanban-toggle-container {
-                    margin: 0;
-                }
-
-                .cp-kanban-filterTags {
-                    flex-direction: column;
-                    align-items: flex-start;
-                    min-width: auto;
-
-                    .cp-kanban-filterTags-toggle {
-                        flex-direction: row;
-                        align-items: center;
-                        gap: 8px;
-                    }
-
-                    .cp-kanban-filterTags-list {
-                        margin: 8px 0 0 0;
-                    }
-                }
-
-                .cp-kanban-advanced-filters {
-                    flex-wrap: wrap;
-                    gap: 12px;
-                }
+                // Legacy nested styles kept for reference; panel content is now
+                // rendered as a sibling element after #cp-kanban-controls.
+                // See the top-level .cp-kanban-filter-panel-content rule below.
             }
         }
 
@@ -2327,6 +2287,63 @@
                 &:focus-visible {
                     outline: @variables_focus_style;
                 }
+            }
+        }
+    }
+
+    // Filter panel content - rendered as a sibling after #cp-kanban-controls
+    // so it flows inline and pushes board content down instead of overlapping.
+    .cp-kanban-filter-panel-content {
+        background: @cp_kanban-board-bg;
+        border: 1px solid @kanban-border;
+        border-radius: @variables_radius;
+        box-shadow: 0 2px 8px @kanban-shadow;
+        padding: 10px 15px;
+        margin: 0 15px 8px 15px;
+
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+
+        // Override nested styles for compact horizontal layout
+        .cp-kanban-toggle-container {
+            margin: 0;
+        }
+
+        .cp-kanban-filterTags {
+            flex-direction: row;
+            align-items: center;
+            min-width: auto;
+
+            .cp-kanban-filterTags-toggle {
+                flex-direction: row;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .cp-kanban-filterTags-list {
+                margin: 0 0 0 8px;
+            }
+        }
+
+        .cp-kanban-advanced-filters {
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+
+            .cp-kanban-filter-controls {
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 12px;
+                align-items: center;
+            }
+
+            .cp-kanban-filter-row {
+                padding: 0;
+                border-bottom: none;
+                gap: 6px;
             }
         }
     }
@@ -3453,8 +3470,9 @@
         }
     }
 
-    // Card assignee checkboxes
-    .cp-kanban-assignee-checkboxes {
+    // Card assignee checkboxes and assignee list share identical styles
+    .cp-kanban-assignee-checkboxes,
+    .cp-kanban-assignee-list {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
@@ -3496,6 +3514,42 @@
                 font-weight: 500;
                 color: @kanban-text-primary;
             }
+        }
+    }
+
+    .cp-kanban-assignee-add-form {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+
+        .cp-kanban-assignee-add-input {
+            flex: 1;
+            padding: 4px 8px;
+            font-size: 12px;
+            border: 1px solid @kanban-border;
+            border-radius: @variables_radius;
+            background: var(--kanban-surface, #fff);
+            color: @kanban-text-primary;
+            outline: none;
+
+            &:focus {
+                border-color: @kanban-accent;
+            }
+
+            &::placeholder {
+                color: @kanban-text-secondary;
+                opacity: 0.6;
+            }
+        }
+
+        .cp-kanban-assignee-add-btn {
+            padding: 4px 8px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
         }
     }
 
@@ -4067,7 +4121,8 @@
         }
 
         // Assignee checkboxes in modal - compact version
-        .cp-kanban-assignee-checkboxes {
+        .cp-kanban-assignee-checkboxes,
+        .cp-kanban-assignee-list {
             display: flex;
             flex-wrap: wrap;
             gap: 4px;
@@ -4514,8 +4569,8 @@
 
         // Fixed-width label column placeholder in header
         .cp-timeline-header-label-spacer {
-            width: 180px;
-            min-width: 180px;
+            width: 200px;
+            min-width: 200px;
             flex-shrink: 0;
             background: @kanban-surface-hover;
             border-right: 1px solid @kanban-border;
@@ -4559,7 +4614,7 @@
             background: fade(@kanban-danger, 60%);
             z-index: 10;
             pointer-events: none;
-            // Left position is set via inline style as calc(180px + X% of remaining space)
+            // Left position is set via inline style as calc(200px + X% of remaining space)
             // The percentage is calculated in JS based on viewport days
 
             &::before {
@@ -4601,8 +4656,8 @@
         }
 
         .cp-timeline-row-label {
-            width: 180px;
-            min-width: 180px;
+            width: 200px;
+            min-width: 200px;
             padding: 8px 12px;
             font-size: 13px;
             font-weight: 500;
@@ -4618,6 +4673,8 @@
             position: sticky;
             left: 0;
             z-index: 5;
+
+            cursor: default;
 
             &.cp-timeline-task-label {
                 font-weight: 400;
@@ -4740,6 +4797,76 @@
             z-index: 1000;
         }
 
+        // No-dates placeholder pill: small static indicator instead of a full bar
+        .cp-timeline-bar.cp-timeline-no-dates {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            width: auto !important;
+            left: auto !important;
+            padding: 0 12px;
+            height: 24px;
+            margin: 6px 8px;
+            background: transparent !important;
+            border: 2px dashed @kanban-text-muted;
+            color: @kanban-text-muted;
+            border-radius: 12px;
+            opacity: 0.75;
+            cursor: pointer;
+            font-size: 11px;
+
+            &:hover {
+                opacity: 1;
+                transform: none;
+                box-shadow: none;
+                border-color: @kanban-accent;
+                color: @kanban-accent;
+            }
+
+            .fa-calendar-o {
+                font-size: 12px;
+                flex-shrink: 0;
+            }
+
+            .cp-timeline-bar-label {
+                font-weight: 400;
+                font-size: 11px;
+            }
+
+            // Task variant is smaller
+            &.cp-timeline-task-bar {
+                height: 20px;
+                margin: 8px 8px;
+                font-size: 10px;
+                border-radius: 10px;
+
+                .cp-timeline-bar-label {
+                    font-size: 10px;
+                }
+            }
+        }
+
+        // Partial-dates bars: dashed border on the open-ended side
+        .cp-timeline-bar.cp-timeline-partial-dates {
+            opacity: 0.8;
+            border: 2px dashed transparent;
+
+            &.cp-timeline-no-end {
+                border-right: 2px dashed fade(#fff, 60%);
+                border-radius: 4px 0 0 4px;
+            }
+
+            &.cp-timeline-no-start {
+                border-left: 2px dashed fade(#fff, 60%);
+                border-radius: 0 4px 4px 0;
+            }
+
+            &:hover {
+                opacity: 1;
+            }
+        }
+
         .cp-timeline-empty {
             flex: 1;
             display: flex;
@@ -4807,9 +4934,11 @@
                 font-size: 11px;
             }
 
+            .cp-timeline-header-label-spacer,
             .cp-timeline-row-label {
-                min-width: 100px;
-                max-width: 120px;
+                width: 140px;
+                min-width: 140px;
+                max-width: 140px;
                 font-size: 12px;
             }
 
@@ -4830,9 +4959,11 @@
                 width: 100%;
             }
 
+            .cp-timeline-header-label-spacer,
             .cp-timeline-row-label {
-                min-width: 80px;
-                max-width: 100px;
+                width: 120px;
+                min-width: 120px;
+                max-width: 120px;
                 font-size: 11px;
             }
 
@@ -5298,6 +5429,15 @@
             color: #2563eb;
         }
 
+        &.coming-up .group-header {
+            color: #7c3aed;
+
+            .count {
+                background: #ede9fe;
+                color: #7c3aed;
+            }
+        }
+
         ul {
             list-style: none;
             margin: 0;
@@ -5534,6 +5674,20 @@
             margin-bottom: 16px;
         }
 
+        .quickstats-subheader {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--kanban-text-secondary);
+            margin: 12px 0 6px 0;
+            padding: 0;
+
+            &:first-of-type {
+                margin-top: 0;
+            }
+        }
+
         .quickstats-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -5561,10 +5715,20 @@
             font-weight: 500;
         }
 
+        .quickstat-detail {
+            font-size: 10px;
+            color: var(--kanban-text-secondary);
+            opacity: 0.7;
+            margin-left: 4px;
+            font-weight: 400;
+        }
+
         .quickstat-value {
-            font-size: 16px;
+            font-size: 13px;
             font-weight: 700;
             color: var(--kanban-text-primary);
+            text-align: right;
+            white-space: nowrap;
 
             &.warning {
                 color: #d97706;
@@ -5958,6 +6122,15 @@
             color: #60a5fa;
         }
 
+        &.coming-up .group-header {
+            color: #a78bfa;
+
+            .count {
+                background: rgba(139, 92, 246, 0.2);
+                color: #a78bfa;
+            }
+        }
+
         ul li {
             background: #1a1a1a;
         }
@@ -6017,6 +6190,14 @@
             &.highlight {
                 color: #a78bfa;
             }
+        }
+
+        .quickstats-subheader {
+            color: #9ca3af;
+        }
+
+        .quickstat-detail {
+            color: #9ca3af;
         }
     }
 }

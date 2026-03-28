@@ -16,6 +16,63 @@ define([
      * @site: http://www.riccardotartaglia.it/jkanban/
      * @author: Riccardo Tartaglia
      */
+    // Shared helper: compute relative due date text from a date string.
+    // Uses Math.floor consistently so "Due in 2 weeks" means at least 14 full days remain.
+    // Parse a YYYY-MM-DD string as local time instead of UTC.
+    // new Date('YYYY-MM-DD') is parsed as UTC per spec, which shifts to the
+    // previous day in negative-UTC-offset timezones.
+    var parseDateLocal = function (dateStr) {
+        if (!dateStr) { return null; }
+        var parts = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (parts) {
+            var year = parseInt(parts[1], 10);
+            var monthIndex = parseInt(parts[2], 10) - 1;
+            var day = parseInt(parts[3], 10);
+            var d = new Date(year, monthIndex, day);
+            // Reject impossible dates like Feb 31 (Date normalizes overflow)
+            if (d.getFullYear() !== year || d.getMonth() !== monthIndex || d.getDate() !== day) {
+                return null;
+            }
+            return d;
+        }
+        var d2 = new Date(dateStr);
+        return isNaN(d2.getTime()) ? null : d2;
+    };
+
+    // DST-safe day number: returns a whole-number day index in UTC so that
+    // subtracting two toDayNumber results always yields exact calendar days,
+    // even across DST boundaries where local midnight-to-midnight can be 23h or 25h.
+    var toDayNumber = function (d) {
+        return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+    };
+
+    var formatRelativeDate = function (dateStr) {
+        if (!dateStr) { return ''; }
+        var dateObj = parseDateLocal(dateStr);
+        if (!dateObj) { return ''; }
+
+        var today = new Date();
+        var diffDays = toDayNumber(dateObj) - toDayNumber(today);
+
+        if (diffDays < 0) {
+            var overdueDays = Math.abs(diffDays);
+            if (overdueDays === 1) { return 'Overdue by 1 day'; }
+            if (overdueDays < 7) { return 'Overdue by ' + overdueDays + ' days'; }
+            if (overdueDays < 14) { return 'Overdue by 1 week'; }
+            var weeksOverdue = Math.floor(overdueDays / 7);
+            return 'Overdue by ' + weeksOverdue + ' week' + (weeksOverdue !== 1 ? 's' : '');
+        }
+        if (diffDays === 0) { return 'Due today'; }
+        if (diffDays === 1) { return 'Due tomorrow'; }
+        if (diffDays < 7) { return 'Due in ' + diffDays + ' days'; }
+        if (diffDays < 30) {
+            var weeks = Math.floor(diffDays / 7);
+            return 'Due in ' + weeks + ' week' + (weeks !== 1 ? 's' : '');
+        }
+        var months = Math.floor(diffDays / 30);
+        return 'Due in ' + months + ' month' + (months !== 1 ? 's' : '');
+    };
+
     return function () {
         var self = this;
         this.element = '';
@@ -339,7 +396,7 @@ define([
                             el.dropfn(el, target, source, sibling);
                         }
 
-                        var id = Number($(el).attr('data-id'));
+                        var id = String($(el).attr('data-id'));
                         var list = self.options.boards.list || [];
 
                         var index1 = list.indexOf(id);
@@ -356,8 +413,9 @@ define([
                         }
 
                         var index2;
-                        var id2 = Number($(sibling).attr("data-id"));
+                        var id2 = $(sibling).attr("data-id");
                         if (sibling && id2) {
+                            id2 = String(id2);
                             index2 = list.indexOf(id2);
                         }
                         // If we can't find the drop position, drop at the end
@@ -365,7 +423,6 @@ define([
                             index2 = list.length;
                         }
 
-                        console.log("Switch " + index1 + " and " + index2);
                         if (index1 < index2) {
                             index2 = index2 - 1;
                         }
@@ -409,7 +466,6 @@ define([
                         }
                     })
                     .on('dragend', function (el) {
-                        console.log("In dragend");
                         el.classList.remove('is-moving');
                         self.options.dragendEl(el);
                         $('.kanban-trash').removeClass('kanban-trash-suggest');
@@ -420,7 +476,6 @@ define([
                         }
                     })
                     .on('cancel', function (el, container, source) {
-                        console.log("In cancel");
                         el.classList.remove('is-moving');
                         var boardId = $(source).closest('kanban-board').data('id');
                         self.options.dragcancelEl(el, boardId);
@@ -443,10 +498,8 @@ define([
                         self.enableAllBoards();
                         el.classList.remove('is-moving');
 
-                        console.log("In drop");
-
-                        var id1 = Number($(el).attr('data-eid'));
-                        var boardId = Number($(source).closest('.kanban-board').data('id'));
+                        var id1 = String($(el).attr('data-eid'));
+                        var boardId = String($(source).closest('.kanban-board').data('id'));
 
                         // Move to trash?
                         if (target.classList.contains('kanban-trash')) {
@@ -456,11 +509,12 @@ define([
                         }
 
                         // Find the new board
-                        var targetId = Number($(target).closest('.kanban-board').data('id'));
+                        var targetId = String($(target).closest('.kanban-board').data('id'));
                         if (!targetId) { return; }
                         var board2 = __findBoardJSON(targetId);
+                        if (!board2 || !Array.isArray(board2.item)) { return; }
                         var id2 = $(sibling).attr('data-eid');
-                        if (id2) { id2 = Number(id2); }
+                        if (id2) { id2 = String(id2); }
                         var pos2 = id2 ? board2.item.indexOf(id2) : board2.item.length;
                         if (pos2 === -1) { pos2 = board2.item.length; }
 
@@ -480,6 +534,7 @@ define([
         };
 
         var findItem = function (eid) {
+            eid = String(eid);
             var boards = self.options.boards;
             var list = boards.list || [];
             var res = [];
@@ -501,7 +556,7 @@ define([
             var boards = self.options.boards;
             var data = boards.data || {};
             var exists = Object.keys(data).some(function (id) {
-                return (data[id].item || []).indexOf(Number(eid)) !== -1;
+                return (data[id].item || []).indexOf(String(eid)) !== -1;
             });
             return exists;
         };
@@ -513,6 +568,8 @@ define([
         // is unsupported and may cause tasks or projects to be filtered out of My Tasks and
         // Timeline views. Contributors should always use these APIs for item attachment.
         this.moveItem = function (source, eid, board, pos) {
+            // Normalize eid to String once at the top to avoid mixed-type indexOf mismatches
+            eid = String(eid);
             var boards = self.options.boards;
             var same = -1;
             if (source && boards.data[source]) {
@@ -522,7 +579,7 @@ define([
                 }
                 // Remove from this board only
                 var l = boards.data[source].item;
-                var idx = l.indexOf(Number(eid));
+                var idx = l.indexOf(eid);
                 if (idx !== -1) { l.splice(idx, 1); }
                 if (boards.data[source] === board) { same = idx; }
             } else {
@@ -584,20 +641,21 @@ define([
             }
 
             if (element.color) {
-                if (/color/.test(element.color)) {
-                    // Palette color
+                if (/^color\d+$/.test(element.color)) {
+                    // Palette color (color1-color8)
                     nodeItem.classList.add('cp-kanban-palette-' + element.color);
-                } else {
-                    // Hex color code
+                } else if (/^[0-9a-f]{6}$/i.test(element.color)) {
+                    // Validated hex color code
                     var textColor = self.options.getTextColor(element.color);
                     nodeItem.setAttribute('style', 'background-color:#' + element.color + ';color:' + textColor + ';');
                 }
+                // Invalid color values are silently ignored
             }
             var nodeCursors = document.createElement('div');
             nodeCursors.classList.add('cp-kanban-cursors');
             Object.keys(self.options.cursors).forEach(function (id) {
                 var c = self.options.cursors[id];
-                if (Number(c.item) !== Number(element.id)) { return; }
+                if (String(c.item) !== String(element.id)) { return; }
                 var el = self.options.getAvatar(c);
                 nodeCursors.appendChild(el);
             });
@@ -793,8 +851,8 @@ define([
 
             // ROW 3: Due date row with color-coded text (no bar)
             if (element.due_date) {
-                var dateObj = new Date(element.due_date);
-                if (!isNaN(dateObj.getTime())) {
+                var dateObj = parseDateLocal(element.due_date);
+                if (dateObj) {
                     var dueDateRow = document.createElement('div');
                     dueDateRow.className = 'kanban-metric-row kanban-due-date-row';
 
@@ -806,43 +864,18 @@ define([
                     });
                     dueDateRow.title = exactDateStr;
 
-                    var now = new Date();
-                    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                    var dueDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
-                    var daysUntilDue = Math.ceil((dueDay - today) / (1000 * 60 * 60 * 24));
+                    var relativeText = formatRelativeDate(element.due_date);
 
-                    var relativeText;
+                    // Determine urgency class from days difference
+                    var daysUntilDue = toDayNumber(dateObj) - toDayNumber(new Date());
                     var dueDateClass = '';
                     if (daysUntilDue < 0) {
-                        var daysOverdue = Math.abs(daysUntilDue);
-                        if (daysOverdue === 1) {
-                            relativeText = 'Overdue by 1 day';
-                        } else if (daysOverdue < 7) {
-                            relativeText = 'Overdue by ' + daysOverdue + ' days';
-                        } else if (daysOverdue < 14) {
-                            relativeText = 'Overdue by 1 week';
-                        } else {
-                            var weeksOverdue = Math.floor(daysOverdue / 7);
-                            relativeText = 'Overdue by ' + weeksOverdue + ' weeks';
-                        }
                         dueDateClass = 'kanban-due-text-overdue';
                     } else if (daysUntilDue === 0) {
-                        relativeText = 'Due today';
-                        dueDateClass = 'kanban-due-text-overdue';
-                    } else if (daysUntilDue <= 7) {
-                        if (daysUntilDue === 1) {
-                            relativeText = 'Due tomorrow';
-                        } else {
-                            relativeText = 'Due in ' + daysUntilDue + ' days';
-                        }
                         dueDateClass = 'kanban-due-text-urgent';
-                    } else if (daysUntilDue <= 30) {
-                        var weeks = Math.floor(daysUntilDue / 7);
-                        relativeText = weeks === 1 ? 'Due in 1 week' : 'Due in ' + weeks + ' weeks';
-                        dueDateClass = 'kanban-due-text-normal';
+                    } else if (daysUntilDue <= 7) {
+                        dueDateClass = 'kanban-due-text-urgent';
                     } else {
-                        var months = Math.floor(daysUntilDue / 30);
-                        relativeText = months === 1 ? 'Due in 1 month' : 'Due in ' + months + ' months';
                         dueDateClass = 'kanban-due-text-normal';
                     }
 
@@ -1093,14 +1126,9 @@ define([
                         var dueDateBadge = document.createElement('span');
                         dueDateBadge.className = 'kanban-task-due-date';
 
-                        // Calculate days until due
-                        var today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        var dueDate = new Date(task.due_date);
-                        dueDate.setHours(0, 0, 0, 0);
-                        var daysUntilDue = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
-
                         // Format exact date for tooltip
+                        var dueDate = parseDateLocal(task.due_date) || new Date(task.due_date);
+                        dueDate.setHours(0, 0, 0, 0);
                         var exactDateStr = dueDate.toLocaleDateString('en-US', {
                             weekday: 'long',
                             year: 'numeric',
@@ -1109,44 +1137,18 @@ define([
                         });
                         dueDateBadge.title = exactDateStr;
 
-                        // Calculate relative text based on days
-                        var relativeText;
+                        // Use shared helper for consistent relative text
+                        var relativeText = formatRelativeDate(task.due_date);
+
+                        // Determine urgency class from days difference
+                        var daysUntilDue = toDayNumber(dueDate) - toDayNumber(new Date());
                         if (daysUntilDue < 0) {
-                            // Overdue
-                            var daysOverdue = Math.abs(daysUntilDue);
-                            if (daysOverdue === 1) {
-                                relativeText = 'Overdue by 1 day';
-                            } else if (daysOverdue < 7) {
-                                relativeText = 'Overdue by ' + daysOverdue + ' days';
-                            } else if (daysOverdue < 14) {
-                                relativeText = 'Overdue by 1 week';
-                            } else {
-                                var weeksOverdue = Math.floor(daysOverdue / 7);
-                                relativeText = 'Overdue by ' + weeksOverdue + ' weeks';
-                            }
                             dueDateBadge.classList.add('kanban-task-due-overdue');
-                        } else if (daysUntilDue === 0) {
-                            relativeText = 'Due today';
-                            dueDateBadge.classList.add('kanban-task-due-overdue');
-                        } else if (daysUntilDue === 1) {
-                            relativeText = 'Due tomorrow';
+                        } else if (daysUntilDue < 7) {
                             dueDateBadge.classList.add('kanban-task-due-urgent');
-                        } else if (daysUntilDue <= 6) {
-                            relativeText = 'Due in ' + daysUntilDue + ' days';
-                            dueDateBadge.classList.add('kanban-task-due-urgent');
-                        } else if (daysUntilDue <= 13) {
-                            relativeText = 'Due in 1 week';
+                        } else if (daysUntilDue < 30) {
                             dueDateBadge.classList.add('kanban-task-due-soon');
-                        } else if (daysUntilDue <= 27) {
-                            var weeks = Math.floor(daysUntilDue / 7);
-                            relativeText = 'Due in ' + weeks + ' weeks';
-                            dueDateBadge.classList.add('kanban-task-due-soon');
-                        } else if (daysUntilDue <= 59) {
-                            relativeText = 'Due in 1 month';
-                            dueDateBadge.classList.add('kanban-task-due-later');
                         } else {
-                            var months = Math.floor(daysUntilDue / 30);
-                            relativeText = 'Due in ' + months + ' months';
                             dueDateBadge.classList.add('kanban-task-due-later');
                         }
 
@@ -1365,7 +1367,7 @@ define([
             nodeCursors.classList.add('cp-kanban-cursors');
             Object.keys(self.options.cursors).forEach(function (id) {
                 var c = self.options.cursors[id];
-                if (Number(c.board) !== Number(board.id)) { return; }
+                if (String(c.board) !== String(board.id)) { return; }
                 var el = self.options.getAvatar(c);
                 nodeCursors.appendChild(el);
             });
