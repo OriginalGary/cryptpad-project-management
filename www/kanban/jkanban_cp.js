@@ -16,6 +16,38 @@ define([
      * @site: http://www.riccardotartaglia.it/jkanban/
      * @author: Riccardo Tartaglia
      */
+    // Shared helper: compute relative due date text from a date string.
+    // Uses Math.floor consistently so "Due in 2 weeks" means at least 14 full days remain.
+    var formatRelativeDate = function (dateStr) {
+        if (!dateStr) { return ''; }
+        var dateObj = new Date(dateStr);
+        if (isNaN(dateObj.getTime())) { return ''; }
+
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        var dueDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+        var diffMs = dueDay - today;
+        var diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffDays < 0) {
+            var overdueDays = Math.abs(diffDays);
+            if (overdueDays === 1) { return 'Overdue by 1 day'; }
+            if (overdueDays < 7) { return 'Overdue by ' + overdueDays + ' days'; }
+            if (overdueDays < 14) { return 'Overdue by 1 week'; }
+            var weeksOverdue = Math.floor(overdueDays / 7);
+            return 'Overdue by ' + weeksOverdue + ' week' + (weeksOverdue !== 1 ? 's' : '');
+        }
+        if (diffDays === 0) { return 'Due today'; }
+        if (diffDays === 1) { return 'Due tomorrow'; }
+        if (diffDays < 7) { return 'Due in ' + diffDays + ' days'; }
+        if (diffDays < 30) {
+            var weeks = Math.floor(diffDays / 7);
+            return 'Due in ' + weeks + ' week' + (weeks !== 1 ? 's' : '');
+        }
+        var months = Math.floor(diffDays / 30);
+        return 'Due in ' + months + ' month' + (months !== 1 ? 's' : '');
+    };
+
     return function () {
         var self = this;
         this.element = '';
@@ -806,43 +838,21 @@ define([
                     });
                     dueDateRow.title = exactDateStr;
 
+                    var relativeText = formatRelativeDate(element.due_date);
+
+                    // Determine urgency class from days difference
                     var now = new Date();
                     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                     var dueDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
-                    var daysUntilDue = Math.ceil((dueDay - today) / (1000 * 60 * 60 * 24));
-
-                    var relativeText;
+                    var daysUntilDue = Math.floor((dueDay - today) / (1000 * 60 * 60 * 24));
                     var dueDateClass = '';
                     if (daysUntilDue < 0) {
-                        var daysOverdue = Math.abs(daysUntilDue);
-                        if (daysOverdue === 1) {
-                            relativeText = 'Overdue by 1 day';
-                        } else if (daysOverdue < 7) {
-                            relativeText = 'Overdue by ' + daysOverdue + ' days';
-                        } else if (daysOverdue < 14) {
-                            relativeText = 'Overdue by 1 week';
-                        } else {
-                            var weeksOverdue = Math.floor(daysOverdue / 7);
-                            relativeText = 'Overdue by ' + weeksOverdue + ' weeks';
-                        }
                         dueDateClass = 'kanban-due-text-overdue';
                     } else if (daysUntilDue === 0) {
-                        relativeText = 'Due today';
                         dueDateClass = 'kanban-due-text-overdue';
                     } else if (daysUntilDue <= 7) {
-                        if (daysUntilDue === 1) {
-                            relativeText = 'Due tomorrow';
-                        } else {
-                            relativeText = 'Due in ' + daysUntilDue + ' days';
-                        }
                         dueDateClass = 'kanban-due-text-urgent';
-                    } else if (daysUntilDue <= 30) {
-                        var weeks = Math.floor(daysUntilDue / 7);
-                        relativeText = weeks === 1 ? 'Due in 1 week' : 'Due in ' + weeks + ' weeks';
-                        dueDateClass = 'kanban-due-text-normal';
                     } else {
-                        var months = Math.floor(daysUntilDue / 30);
-                        relativeText = months === 1 ? 'Due in 1 month' : 'Due in ' + months + ' months';
                         dueDateClass = 'kanban-due-text-normal';
                     }
 
@@ -1093,14 +1103,9 @@ define([
                         var dueDateBadge = document.createElement('span');
                         dueDateBadge.className = 'kanban-task-due-date';
 
-                        // Calculate days until due
-                        var today = new Date();
-                        today.setHours(0, 0, 0, 0);
+                        // Format exact date for tooltip
                         var dueDate = new Date(task.due_date);
                         dueDate.setHours(0, 0, 0, 0);
-                        var daysUntilDue = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
-
-                        // Format exact date for tooltip
                         var exactDateStr = dueDate.toLocaleDateString('en-US', {
                             weekday: 'long',
                             year: 'numeric',
@@ -1109,44 +1114,22 @@ define([
                         });
                         dueDateBadge.title = exactDateStr;
 
-                        // Calculate relative text based on days
-                        var relativeText;
+                        // Use shared helper for consistent relative text
+                        var relativeText = formatRelativeDate(task.due_date);
+
+                        // Determine urgency class from days difference
+                        var today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        var daysUntilDue = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
                         if (daysUntilDue < 0) {
-                            // Overdue
-                            var daysOverdue = Math.abs(daysUntilDue);
-                            if (daysOverdue === 1) {
-                                relativeText = 'Overdue by 1 day';
-                            } else if (daysOverdue < 7) {
-                                relativeText = 'Overdue by ' + daysOverdue + ' days';
-                            } else if (daysOverdue < 14) {
-                                relativeText = 'Overdue by 1 week';
-                            } else {
-                                var weeksOverdue = Math.floor(daysOverdue / 7);
-                                relativeText = 'Overdue by ' + weeksOverdue + ' weeks';
-                            }
                             dueDateBadge.classList.add('kanban-task-due-overdue');
-                        } else if (daysUntilDue === 0) {
-                            relativeText = 'Due today';
-                            dueDateBadge.classList.add('kanban-task-due-overdue');
-                        } else if (daysUntilDue === 1) {
-                            relativeText = 'Due tomorrow';
+                        } else if (daysUntilDue <= 1) {
+                            dueDateBadge.classList.add(daysUntilDue === 0 ? 'kanban-task-due-overdue' : 'kanban-task-due-urgent');
+                        } else if (daysUntilDue < 7) {
                             dueDateBadge.classList.add('kanban-task-due-urgent');
-                        } else if (daysUntilDue <= 6) {
-                            relativeText = 'Due in ' + daysUntilDue + ' days';
-                            dueDateBadge.classList.add('kanban-task-due-urgent');
-                        } else if (daysUntilDue <= 13) {
-                            relativeText = 'Due in 1 week';
+                        } else if (daysUntilDue < 30) {
                             dueDateBadge.classList.add('kanban-task-due-soon');
-                        } else if (daysUntilDue <= 27) {
-                            var weeks = Math.floor(daysUntilDue / 7);
-                            relativeText = 'Due in ' + weeks + ' weeks';
-                            dueDateBadge.classList.add('kanban-task-due-soon');
-                        } else if (daysUntilDue <= 59) {
-                            relativeText = 'Due in 1 month';
-                            dueDateBadge.classList.add('kanban-task-due-later');
                         } else {
-                            var months = Math.floor(daysUntilDue / 30);
-                            relativeText = 'Due in ' + months + ' months';
                             dueDateBadge.classList.add('kanban-task-due-later');
                         }
 

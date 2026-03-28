@@ -540,10 +540,14 @@ define([
                 }
             };
             if (b.confirm) {
-                UI.confirmButton(button, {
+                var confirmOpts = {
                     classes: 'danger',
                     divClasses: 'left'
-                }, todo);
+                };
+                if (typeof(b.confirm) === 'object') {
+                    if (b.confirm.timeout) { confirmOpts.timeout = b.confirm.timeout; }
+                }
+                UI.confirmButton(button, confirmOpts, todo);
             } else {
                 Util.onClickEnter($(button), function (e) {
                     e.stopPropagation();
@@ -913,7 +917,7 @@ define([
             done(true);
         });
 
-        var TIMEOUT = 3000;
+        var TIMEOUT = config.timeout || 3000;
         var INTERVAL = 10;
         var i = 1;
 
