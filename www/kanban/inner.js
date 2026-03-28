@@ -1284,6 +1284,7 @@ define([
             $(addInput).off('keydown').on('keydown', function (e) {
                 if (e.which === 13) {
                     e.preventDefault();
+                    e.stopPropagation();
                     addAssignee();
                 }
             });
