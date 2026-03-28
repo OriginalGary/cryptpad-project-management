@@ -3516,6 +3516,86 @@
         }
     }
 
+    .cp-kanban-assignee-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 0;
+        max-height: 120px;
+        overflow-y: auto;
+
+        .cp-kanban-assignee-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: transparent;
+            border-radius: @variables_radius;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.15s ease;
+
+            &:hover {
+                background: var(--kanban-text-primary-fade-5);
+            }
+
+            .cp-kanban-assignee-checkbox {
+                width: 16px;
+                height: 16px;
+                margin: 0;
+                flex-shrink: 0;
+                cursor: pointer;
+                accent-color: @kanban-success;
+            }
+
+            span {
+                user-select: none;
+                color: @kanban-text-secondary;
+            }
+
+            .cp-kanban-assignee-checkbox:checked+span {
+                font-weight: 500;
+                color: @kanban-text-primary;
+            }
+        }
+    }
+
+    .cp-kanban-assignee-add-form {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+
+        .cp-kanban-assignee-add-input {
+            flex: 1;
+            padding: 4px 8px;
+            font-size: 12px;
+            border: 1px solid @kanban-border;
+            border-radius: @variables_radius;
+            background: var(--kanban-surface, #fff);
+            color: @kanban-text-primary;
+            outline: none;
+
+            &:focus {
+                border-color: @kanban-accent;
+            }
+
+            &::placeholder {
+                color: @kanban-text-secondary;
+                opacity: 0.6;
+            }
+        }
+
+        .cp-kanban-assignee-add-btn {
+            padding: 4px 8px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+    }
+
     // My Tasks View Container
     #cp-kanban-mytasks-container {
         flex: 1;

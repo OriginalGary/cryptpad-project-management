@@ -1210,11 +1210,8 @@ define([
             });
             availableAssignees.sort();
 
-            if (availableAssignees.length === 0) {
-                $assigneeContainer.append(h('em', { style: 'color: #888; font-size: 12px;' }, 'No contacts available'));
-                return;
-            }
-
+            // Render checkboxes for known assignees
+            var $checkboxList = $(h('div.cp-kanban-assignee-list'));
             availableAssignees.forEach(function (name) {
                 var isChecked = selectedAssignees.some(function (s) {
                     return s.toLowerCase() === name.toLowerCase();
@@ -1232,7 +1229,6 @@ define([
                 ]);
 
                 $(checkbox).off('change').on('change', function () {
-                    // Get all checked assignees
                     var checkedAssignees = [];
                     $assigneeContainer.find('.cp-kanban-assignee-checkbox:checked').each(function () {
                         checkedAssignees.push($(this).val());
@@ -1241,7 +1237,42 @@ define([
                     commit();
                 });
 
-                $assigneeContainer.append(label);
+                $checkboxList.append(label);
+            });
+            $assigneeContainer.append($checkboxList);
+
+            // Add free-text input for adding assignees manually
+            var addInput = h('input.cp-kanban-assignee-add-input', {
+                type: 'text',
+                placeholder: 'Type a name and press Enter...'
+            });
+            var addBtn = h('button.btn.btn-primary.cp-kanban-assignee-add-btn', [
+                h('i.fa.fa-plus'),
+                h('span', 'Add')
+            ]);
+            var $addForm = $(h('div.cp-kanban-assignee-add-form', [addInput, addBtn]));
+            $assigneeContainer.append($addForm);
+
+            var addAssignee = function () {
+                var newName = $(addInput).val().trim();
+                if (!newName) { return; }
+                $(addInput).val('');
+                // Merge with current assignees
+                var current = (dataObject.assignee || '').split(',').map(function (a) { return a.trim(); }).filter(function (a) { return a; });
+                if (current.some(function (a) { return a.toLowerCase() === newName.toLowerCase(); })) { return; }
+                current.push(newName);
+                dataObject.assignee = current.join(', ');
+                commit();
+                // Re-render to show the new checkbox
+                renderAssigneeCheckboxes(dataObject.assignee);
+            };
+
+            $(addBtn).off('click').on('click', addAssignee);
+            $(addInput).off('keydown').on('keydown', function (e) {
+                if (e.which === 13) {
+                    e.preventDefault();
+                    addAssignee();
+                }
             });
         };
 
@@ -1484,11 +1515,23 @@ define([
                 }
             });
 
-            // 3. Add any existing assignees from tasks (historical names)
+            // 3. Add any existing assignees from projects and tasks (historical names)
             var boards = kanban.options.boards || {};
             var items = boards.items || {};
             Object.keys(items).forEach(function (itemId) {
                 var item = items[itemId];
+                // Project-level assignees
+                var projectAssignee = (item.assignee || '').trim();
+                if (projectAssignee) {
+                    projectAssignee.split(',').forEach(function (a) {
+                        var name = a.trim();
+                        if (name && !seenNames[name.toLowerCase()]) {
+                            seenNames[name.toLowerCase()] = true;
+                            assignees.push(name);
+                        }
+                    });
+                }
+                // Task-level assignees
                 if (Array.isArray(item.tasks)) {
                     item.tasks.forEach(function (task) {
                         var assignee = (task.assignee || '').trim();
