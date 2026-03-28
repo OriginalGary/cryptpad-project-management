@@ -25,10 +25,25 @@ define([
         if (!dateStr) { return null; }
         var parts = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
         if (parts) {
-            return new Date(parseInt(parts[1], 10), parseInt(parts[2], 10) - 1, parseInt(parts[3], 10));
+            var year = parseInt(parts[1], 10);
+            var monthIndex = parseInt(parts[2], 10) - 1;
+            var day = parseInt(parts[3], 10);
+            var d = new Date(year, monthIndex, day);
+            // Reject impossible dates like Feb 31 (Date normalizes overflow)
+            if (d.getFullYear() !== year || d.getMonth() !== monthIndex || d.getDate() !== day) {
+                return null;
+            }
+            return d;
         }
-        var d = new Date(dateStr);
-        return isNaN(d.getTime()) ? null : d;
+        var d2 = new Date(dateStr);
+        return isNaN(d2.getTime()) ? null : d2;
+    };
+
+    // DST-safe day number: returns a whole-number day index in UTC so that
+    // subtracting two toDayNumber results always yields exact calendar days,
+    // even across DST boundaries where local midnight-to-midnight can be 23h or 25h.
+    var toDayNumber = function (d) {
+        return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
     };
 
     var formatRelativeDate = function (dateStr) {
@@ -37,10 +52,7 @@ define([
         if (!dateObj) { return ''; }
 
         var today = new Date();
-        today.setHours(0, 0, 0, 0);
-        var dueDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
-        var diffMs = dueDay - today;
-        var diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        var diffDays = toDayNumber(dateObj) - toDayNumber(today);
 
         if (diffDays < 0) {
             var overdueDays = Math.abs(diffDays);
@@ -521,6 +533,7 @@ define([
         };
 
         var findItem = function (eid) {
+            eid = String(eid);
             var boards = self.options.boards;
             var list = boards.list || [];
             var res = [];
@@ -554,6 +567,8 @@ define([
         // is unsupported and may cause tasks or projects to be filtered out of My Tasks and
         // Timeline views. Contributors should always use these APIs for item attachment.
         this.moveItem = function (source, eid, board, pos) {
+            // Normalize eid to String once at the top to avoid mixed-type indexOf mismatches
+            eid = String(eid);
             var boards = self.options.boards;
             var same = -1;
             if (source && boards.data[source]) {
@@ -563,7 +578,7 @@ define([
                 }
                 // Remove from this board only
                 var l = boards.data[source].item;
-                var idx = l.indexOf(String(eid));
+                var idx = l.indexOf(eid);
                 if (idx !== -1) { l.splice(idx, 1); }
                 if (boards.data[source] === board) { same = idx; }
             } else {
@@ -850,15 +865,12 @@ define([
                     var relativeText = formatRelativeDate(element.due_date);
 
                     // Determine urgency class from days difference
-                    var now = new Date();
-                    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                    var dueDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
-                    var daysUntilDue = Math.floor((dueDay - today) / (1000 * 60 * 60 * 24));
+                    var daysUntilDue = toDayNumber(dateObj) - toDayNumber(new Date());
                     var dueDateClass = '';
                     if (daysUntilDue < 0) {
                         dueDateClass = 'kanban-due-text-overdue';
                     } else if (daysUntilDue === 0) {
-                        dueDateClass = 'kanban-due-text-overdue';
+                        dueDateClass = 'kanban-due-text-urgent';
                     } else if (daysUntilDue <= 7) {
                         dueDateClass = 'kanban-due-text-urgent';
                     } else {
@@ -1127,13 +1139,9 @@ define([
                         var relativeText = formatRelativeDate(task.due_date);
 
                         // Determine urgency class from days difference
-                        var today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        var daysUntilDue = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
-                        if (daysUntilDue <= 0) {
+                        var daysUntilDue = toDayNumber(dueDate) - toDayNumber(new Date());
+                        if (daysUntilDue < 0) {
                             dueDateBadge.classList.add('kanban-task-due-overdue');
-                        } else if (daysUntilDue <= 1) {
-                            dueDateBadge.classList.add('kanban-task-due-urgent');
                         } else if (daysUntilDue < 7) {
                             dueDateBadge.classList.add('kanban-task-due-urgent');
                         } else if (daysUntilDue < 30) {

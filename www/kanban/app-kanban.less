@@ -3470,52 +3470,8 @@
         }
     }
 
-    // Card assignee checkboxes
-    .cp-kanban-assignee-checkboxes {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        padding: 0;
-        max-height: 120px;
-        overflow-y: auto;
-
-        .cp-kanban-assignee-label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            background: transparent;
-            border-radius: @variables_radius;
-            cursor: pointer;
-            font-size: 13px;
-            transition: background 0.15s ease;
-
-            &:hover {
-                background: var(--kanban-text-primary-fade-5);
-            }
-
-            .cp-kanban-assignee-checkbox {
-                width: 16px;
-                height: 16px;
-                margin: 0;
-                flex-shrink: 0;
-                cursor: pointer;
-                accent-color: @kanban-success;
-            }
-
-            span {
-                user-select: none;
-                color: @kanban-text-secondary;
-            }
-
-            // When checkbox is checked, style the sibling span
-            .cp-kanban-assignee-checkbox:checked+span {
-                font-weight: 500;
-                color: @kanban-text-primary;
-            }
-        }
-    }
-
+    // Card assignee checkboxes and assignee list share identical styles
+    .cp-kanban-assignee-checkboxes,
     .cp-kanban-assignee-list {
         display: flex;
         flex-wrap: wrap;
@@ -3553,6 +3509,7 @@
                 color: @kanban-text-secondary;
             }
 
+            // When checkbox is checked, style the sibling span
             .cp-kanban-assignee-checkbox:checked+span {
                 font-weight: 500;
                 color: @kanban-text-primary;

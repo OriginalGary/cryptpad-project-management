@@ -125,10 +125,25 @@ define([
         if (!dateStr) { return null; }
         var parts = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
         if (parts) {
-            return new Date(parseInt(parts[1], 10), parseInt(parts[2], 10) - 1, parseInt(parts[3], 10));
+            var year = parseInt(parts[1], 10);
+            var monthIndex = parseInt(parts[2], 10) - 1;
+            var day = parseInt(parts[3], 10);
+            var d = new Date(year, monthIndex, day);
+            // Reject impossible dates like Feb 31 (Date normalizes overflow)
+            if (d.getFullYear() !== year || d.getMonth() !== monthIndex || d.getDate() !== day) {
+                return null;
+            }
+            return d;
         }
-        var d = new Date(dateStr);
-        return isNaN(d.getTime()) ? null : d;
+        var d2 = new Date(dateStr);
+        return isNaN(d2.getTime()) ? null : d2;
+    };
+
+    // DST-safe day number: returns a whole-number day index in UTC so that
+    // subtracting two toDayNumber results always yields exact calendar days,
+    // even across DST boundaries where local midnight-to-midnight can be 23h or 25h.
+    var toDayNumber = function (d) {
+        return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
     };
 
     var getAvatar = function (cursor, noClear) {
@@ -2103,7 +2118,8 @@ define([
                 if (isBoard) { return; } // Dependencies are not available for boards
 
                 $projectDeps.empty();
-                deps = (deps || []).map(String);
+                if (!Array.isArray(deps)) { deps = []; }
+                deps = deps.map(String);
 
                 // Get all projects (items) except the current one
                 var boards = kanban.options.boards || {};
@@ -3842,11 +3858,7 @@ define([
                     if (!dateObj) { return ''; }
 
                     var today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    var dueDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
-
-                    var diffMs = dueDay - today;
-                    var diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                    var diffDays = toDayNumber(dateObj) - toDayNumber(today);
 
                     if (diffDays < 0) {
                         var overdueDays = Math.abs(diffDays);
@@ -3874,11 +3886,7 @@ define([
                     if (!dateObj) { return ''; }
 
                     var today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    var dueDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
-
-                    var diffMs = dueDay - today;
-                    var diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                    var diffDays = toDayNumber(dateObj) - toDayNumber(today);
 
                     if (diffDays < 0) { return 'cp-due-overdue'; } // Overdue - red
                     if (diffDays <= 1) { return 'cp-due-urgent'; } // Today/tomorrow - red
@@ -5120,15 +5128,13 @@ define([
                     if (!dateStr) return 0;
                     var d = parseDateLocal(dateStr);
                     if (!d) return 0;
-                    d.setHours(0, 0, 0, 0);
-                    return Math.floor((today - d) / (1000 * 60 * 60 * 24));
+                    return toDayNumber(today) - toDayNumber(d);
                 };
                 var getDaysUntil = function (dateStr) {
                     if (!dateStr) return 0;
                     var d = parseDateLocal(dateStr);
                     if (!d) return 0;
-                    d.setHours(0, 0, 0, 0);
-                    return Math.floor((d - today) / (1000 * 60 * 60 * 24));
+                    return toDayNumber(d) - toDayNumber(today);
                 };
                 var formatDueDate = function (dateStr) {
                     if (!dateStr) return '';
@@ -5887,22 +5893,23 @@ define([
             var data = boards.data || {};
             var list = boards.list || [];
 
-            // Remove duplicate boards
-            list = boards.list = Util.deduplicateString(list);
+            // Normalize to strings first, then deduplicate
+            list = boards.list = Util.deduplicateString((list || []).map(String));
 
             Object.keys(data).forEach(function (id) {
                 var idVal = String(id);
                 if (list.indexOf(idVal) === -1) {
                     list.push(idVal);
                 }
-                // Remove duplicate items
+                // Normalize to strings first, then deduplicate
                 var b = data[id];
-                b.item = Util.deduplicateString(b.item || []);
+                b.item = Util.deduplicateString((b.item || []).map(String));
             });
             Object.keys(items).forEach(function (eid) {
                 var exists = Object.keys(data).some(function (id) {
-                    var itemList = data[id].item || [];
-                    return itemList.indexOf(eid) !== -1 || itemList.indexOf(String(eid)) !== -1;
+                    return (data[id].item || []).some(function (itemId) {
+                        return String(itemId) === String(eid);
+                    });
                 });
                 if (!exists) { delete items[eid]; }
             });
