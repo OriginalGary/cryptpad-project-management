@@ -641,14 +641,15 @@ define([
             }
 
             if (element.color) {
-                if (/color/.test(element.color)) {
-                    // Palette color
+                if (/^color\d+$/.test(element.color)) {
+                    // Palette color (color1-color8)
                     nodeItem.classList.add('cp-kanban-palette-' + element.color);
-                } else {
-                    // Hex color code
+                } else if (/^[0-9a-f]{6}$/i.test(element.color)) {
+                    // Validated hex color code
                     var textColor = self.options.getTextColor(element.color);
                     nodeItem.setAttribute('style', 'background-color:#' + element.color + ';color:' + textColor + ';');
                 }
+                // Invalid color values are silently ignored
             }
             var nodeCursors = document.createElement('div');
             nodeCursors.classList.add('cp-kanban-cursors');

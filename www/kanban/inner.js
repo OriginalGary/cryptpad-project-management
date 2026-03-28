@@ -118,6 +118,17 @@ define([
         return '#FFFFFF';
     };
 
+    // Validate a color value before interpolating into style attributes.
+    // Returns a safe hex string (with #) or '' for invalid/unsafe input.
+    var sanitizeColor = function (color) {
+        if (!color) { return ''; }
+        if (/^#?[0-9a-f]{6}$/i.test(color)) {
+            return color.charAt(0) === '#' ? color : '#' + color;
+        }
+        if (/^color\d+$/.test(color)) { return color; } // palette class name
+        return '';
+    };
+
     // Parse a YYYY-MM-DD string as local time instead of UTC.
     // new Date('YYYY-MM-DD') is parsed as UTC per ECMAScript spec, which shifts
     // to the previous day in negative-UTC-offset timezones.
@@ -1272,7 +1283,8 @@ define([
             // Add free-text input for adding assignees manually
             var addInput = h('input.cp-kanban-assignee-add-input', {
                 type: 'text',
-                placeholder: 'Type a name and press Enter...'
+                placeholder: 'Type a name and press Enter...',
+                maxlength: '100'
             });
             var addBtn = h('button.btn.btn-primary.cp-kanban-assignee-add-btn', [
                 h('i.fa.fa-plus'),
@@ -4555,9 +4567,10 @@ define([
                         // No dates set: show a small placeholder pill instead of a full bar
                         var noDatesTitle = project.title + '\nNo dates set';
                         var noDatesStyle = '';
-                        if (project.color) {
-                            noDatesStyle += 'border-color: ' + project.color + ';';
-                            noDatesStyle += 'color: ' + project.color + ';';
+                        var safeColor = sanitizeColor(project.color);
+                        if (safeColor) {
+                            noDatesStyle += 'border-color: ' + safeColor + ';';
+                            noDatesStyle += 'color: ' + safeColor + ';';
                         }
                         projectBar = h('div.cp-timeline-bar.cp-timeline-project-bar.cp-timeline-no-dates', {
                             style: noDatesStyle,
@@ -4601,9 +4614,10 @@ define([
                                 partialClass += '.cp-timeline-no-start';
                             }
                         }
-                        if (project.color) {
-                            projectBarStyle += ' background-color: ' + project.color + ';';
-                            projectBarStyle += ' color: ' + getTextColor(project.color) + ';';
+                        var safeBarColor = sanitizeColor(project.color);
+                        if (safeBarColor) {
+                            projectBarStyle += ' background-color: ' + safeBarColor + ';';
+                            projectBarStyle += ' color: ' + getTextColor(safeBarColor) + ';';
                         }
                         // Build project bar label with indicators
                         var dateLabel = '';
@@ -4841,9 +4855,10 @@ define([
                         if (taskHasNoDates) {
                             // No dates on task: show placeholder pill
                             var taskNoDatesStyle = '';
-                            if (project.color) {
-                                taskNoDatesStyle += 'border-color: ' + project.color + ';';
-                                taskNoDatesStyle += 'color: ' + project.color + ';';
+                            var safeTaskColor = sanitizeColor(project.color);
+                            if (safeTaskColor) {
+                                taskNoDatesStyle += 'border-color: ' + safeTaskColor + ';';
+                                taskNoDatesStyle += 'color: ' + safeTaskColor + ';';
                             }
                             taskBar = h('div.cp-timeline-bar.cp-timeline-task-bar.cp-timeline-no-dates' + (task.done ? '.done' : ''), {
                                 style: taskNoDatesStyle,
@@ -4884,10 +4899,11 @@ define([
                                     taskPartialClass += '.cp-timeline-no-start';
                                 }
                             }
-                            if (project.color) {
+                            var safeTaskBarColor = sanitizeColor(project.color);
+                            if (safeTaskBarColor) {
                                 // Use project color with transparency for task bars
-                                taskBarStyle += ' background-color: ' + project.color + '; opacity: 0.7;';
-                                taskBarStyle += ' color: ' + getTextColor(project.color) + ';';
+                                taskBarStyle += ' background-color: ' + safeTaskBarColor + '; opacity: 0.7;';
+                                taskBarStyle += ' color: ' + getTextColor(safeTaskBarColor) + ';';
                             }
 
                             // Build task bar label with indicators
