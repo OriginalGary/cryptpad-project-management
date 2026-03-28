@@ -512,6 +512,7 @@ define([
                         var targetId = String($(target).closest('.kanban-board').data('id'));
                         if (!targetId) { return; }
                         var board2 = __findBoardJSON(targetId);
+                        if (!board2 || !Array.isArray(board2.item)) { return; }
                         var id2 = $(sibling).attr('data-eid');
                         if (id2) { id2 = String(id2); }
                         var pos2 = id2 ? board2.item.indexOf(id2) : board2.item.length;
@@ -849,8 +850,8 @@ define([
 
             // ROW 3: Due date row with color-coded text (no bar)
             if (element.due_date) {
-                var dateObj = new Date(element.due_date);
-                if (!isNaN(dateObj.getTime())) {
+                var dateObj = parseDateLocal(element.due_date);
+                if (dateObj) {
                     var dueDateRow = document.createElement('div');
                     dueDateRow.className = 'kanban-metric-row kanban-due-date-row';
 

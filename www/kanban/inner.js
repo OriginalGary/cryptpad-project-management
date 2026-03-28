@@ -2297,8 +2297,8 @@ define([
                 var elId = String($(el).attr("data-eid"));
                 var boardId = String($(board).attr("data-id"));
                 var boardItems = boards.data[boardId].item;
-                var index = boardItems.indexOf(elId);
-                var boardIndex = boards.list.indexOf(boardId);
+                var index = boardItems.findIndex(function(id) { return String(id) === elId; });
+                var boardIndex = boards.list.findIndex(function(id) { return String(id) === boardId; });
                 let nextBoardItems;
 
                 if (direction === 'up' && index > 0) {
@@ -2315,8 +2315,8 @@ define([
             };
 
             var shiftBoards = function (direction, el) {
-                var elId = $(el).attr("data-id");
-                var index = kanban.options.boards.list.indexOf(String(elId));
+                var elId = String($(el).attr("data-id"));
+                var index = kanban.options.boards.list.findIndex(function(id) { return String(id) === elId; });
                 if (direction === 'left' && index > 0) {
                     move(kanban.options.boards.list, index, index - 1);
                 } else if (direction === 'right' && index < kanban.options.boards.list.length - 1) {
@@ -4300,8 +4300,7 @@ define([
             };
 
             var daysBetween = function (date1, date2) {
-                var oneDay = 24 * 60 * 60 * 1000;
-                return Math.floor((date2 - date1) / oneDay);
+                return toDayNumber(date2) - toDayNumber(date1);
             };
 
             // Render Timeline/Gantt view
