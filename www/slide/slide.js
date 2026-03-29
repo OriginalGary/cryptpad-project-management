@@ -81,7 +81,7 @@ define([
 
         if (c === '') {
             var $empty = $('<img>', {
-                src: '/customize/CryptPad_logo_grey.svg',
+                src: '/customize/openpaws-logo.png',
                 alt: '',
                 class: 'cp-app-code-preview-empty'
             });

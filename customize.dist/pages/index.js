@@ -185,18 +185,26 @@ define([
                     h('div.row.cp-home-hero', [
                         h('div.cp-title.col-lg-6', [
                             h('img', {
-                                src: '/api/logo?' + urlArgs,
+                                src: '/customize/openpaws-logo.png',
                                 'aria-hidden': 'true',
                                 alt: ''
                             }),
                             instanceTitle,
                             Pages.setHTML(h('span.tag-line'), Pages.Instance.description),
+                            h('ul.cp-hero-values', [
+                                h('li', [h('i.fa.fa-lock'), ' Zero-knowledge encrypted — the server never sees your content']),
+                                h('li', [h('i.fa.fa-tasks'), ' Full campaign project management: Kanban, Gantt, impact scoring']),
+                                h('li', [h('i.fa.fa-users'), ' Coalition coordination across orgs — no account required to start']),
+                            ]),
+                            h('a.cp-hero-features-link', {href: '/features.html'}, [
+                                'See all features ',
+                                h('i.fa.fa-arrow-right'),
+                            ]),
                             locationBlock,
                             h('div.cp-instance-links', [
                                 termsLink,
                                 privacyLink,
                                 imprintLink,
-                                h('a', {href:"/contact.html"}, Msg.contact),
                                 statusLink,
                             ])
                         ]),

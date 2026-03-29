@@ -12,18 +12,22 @@ html, body {
     height: 100%;
     margin: 0px;
     padding: 0px;
-    background-color: @cp_static-bg !important;
-    color: @cryptpad_text_col;
-    font-family: "IBM Plex Mono";
+    // Analog Archive brand tokens hardcoded — standalone error page, no LESS mixin chain
+    background-color: #0A0A0A;
+    color: #F3F0EB;
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', monospace;
+
     #cp-main {
         margin: 0px;
         width: 100%;
         padding-top: 5%;
         text-align: center;
+        // Open Paws PNG is black-on-transparent — invert to white on the dark bg
         #cp-logo {
             display: block;
             max-width: 15%;
             margin: auto;
+            filter: invert(1);
         }
         #cp-brand {
             font-size: 40px;

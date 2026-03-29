@@ -1,4 +1,7 @@
 {
+  "_comments": {
+    "ckeditor": "Pinned to 4.22.0 — avoid LTS license enforcement introduced in ckeditor4@4.25.1+"
+  },
   "name": "cryptpad",
   "description": "a collaborative office suite that is end-to-end encrypted and open-source",
   "version": "2025.6.0",
@@ -26,7 +29,7 @@
     "chainpad-listmap": "^1.2.0",
     "chainpad-netflux": "^1.3.1",
     "chainpad-server": "^5.2.4",
-    "ckeditor": "npm:ckeditor4@^4.25.1",
+    "ckeditor": "npm:ckeditor4@4.22.0",
     "codemirror": "^5.19.0",
     "components-font-awesome": "^4.6.3",
     "connect-gzip-static": "^5.0.0",

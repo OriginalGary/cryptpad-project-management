@@ -4,18 +4,19 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+// Open Paws — Analog Archive typography
+// DM Serif Display: cinematic headlines
+// Space Grotesk: body text (loaded via Google Fonts <link> in HTML templates)
+// JetBrains Mono: code, metadata, monospace labels
+
 .font_main () {
     --LessLoader_require: LessLoader_currentFile();
 }
 
-@font-face {
-    font-family: 'IBM Plex Mono';
-    font-style: normal;
-    font-weight: 500;
-    src: url("/customize/fonts/IBMPlexMono-Medium.woff2") format("woff2"), url("/customize/fonts/IBMPlexMono-Medium.woff") format("woff"); }
+// DM Serif Display, Space Grotesk, and JetBrains Mono are loaded via Google Fonts
+// <link> tags in HTML templates — no @font-face needed here for those faces.
 
-
-// Fonts need to go on the global scope
+// Keep CryptPadTools icon font (required for app icons)
 @font-tools {
     font-family: CryptPadTools;
     src: url("/customize/fonts/cryptpadtools.ttf");
