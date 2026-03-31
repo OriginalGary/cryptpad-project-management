@@ -4,7 +4,7 @@
 
 # Multistage build to reduce image size and increase security
 # Node 18+ required for @node-saml/node-saml@5.1.0
-FROM node:18-slim AS build
+FROM node:22-slim AS build
 
 # Create folder for CryptPad
 RUN mkdir /cryptpad
@@ -21,7 +21,7 @@ RUN npm install --production \
     && npm run install:components
 
 # Create actual CryptPad image
-FROM node:18-slim
+FROM node:22-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Create user and group for CryptPad so it does not run as root
