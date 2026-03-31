@@ -664,7 +664,7 @@ define([
             toggle: toggle
         };
     };
-    var PROPERTIES = ['title', 'body', 'tags', 'color', 'assignee', 'start_date', 'due_date', 'scoring', 'tasks', 'createdBy', 'dependencies', 'completed', 'comments'];
+    var PROPERTIES = ['title', 'body', 'tags', 'color', 'assignee', 'start_date', 'due_date', 'scoring', 'security_tier', 'tasks', 'createdBy', 'dependencies', 'completed', 'comments'];
     var BOARD_PROPERTIES = ['title', 'color'];
 
     // Task helper function
@@ -817,7 +817,7 @@ define([
 
         var markdownEditorWrapper = h('div.cp-markdown-label-row');
 
-        var conflicts, conflictContainer, titleInput, tagsDiv, projectDepsDiv, text, assigneeInput, startDateInput, dueDateInput, tasksContainer, completedToggle, statusIndicator, statusText;
+        var conflicts, conflictContainer, titleInput, tagsDiv, projectDepsDiv, text, assigneeInput, startDateInput, dueDateInput, securityTierSelect, tasksContainer, completedToggle, statusIndicator, statusText;
         var scoringSliders = {};
 
         // Composite score display with progress bar (always visible)
@@ -967,6 +967,17 @@ define([
                     h('div.cp-kanban-detail-row.cp-kanban-project-deps-row', [
                         h('span.cp-kanban-detail-label', 'Depends On'),
                         projectDepsDiv = h('div#cp-kanban-edit-project-deps.cp-kanban-project-deps-list')
+                    ]),
+
+                    // Security Tier Section (cards only)
+                    h('div.cp-kanban-detail-row.cp-kanban-security-tier-row', [
+                        h('span.cp-kanban-detail-label', 'Security Tier'),
+                        securityTierSelect = h('select#cp-kanban-edit-security-tier.cp-kanban-security-tier-select', { autocomplete: 'off' }, [
+                            h('option', { value: '' }, '— None —'),
+                            h('option', { value: 'T1' }, 'T1 — Public'),
+                            h('option', { value: 'T2' }, 'T2 — Internal'),
+                            h('option', { value: 'T3' }, 'T3 — Confidential (never exported)')
+                        ])
                     ]),
 
                     // Scoring Section (cards only)
@@ -1503,6 +1514,29 @@ define([
 
                 // Update composite score display
                 updateCompositeScore();
+            }
+        };
+
+        // Security Tier field handler
+        var $securityTier = $(securityTierSelect);
+        var VALID_TIERS = ['', 'T1', 'T2', 'T3'];
+        $securityTier.on('change', function () {
+            var val = $securityTier.val();
+            if (VALID_TIERS.indexOf(val) === -1) { val = ''; }
+            $securityTier.toggleClass('cp-kanban-tier-t3', val === 'T3');
+            dataObject.security_tier = val;
+            commit();
+        });
+        var security_tier = {
+            getValue: function () {
+                return $securityTier.val() || '';
+            },
+            setValue: function (val, preserveCursor) {
+                if (isBoard) { return; }
+                if (VALID_TIERS.indexOf(val) === -1) { val = ''; }
+                $securityTier.toggleClass('cp-kanban-tier-t3', val === 'T3');
+                if (preserveCursor && $securityTier.val() === (val || '')) { return; }
+                $securityTier.val(val || '');
             }
         };
 
@@ -2062,7 +2096,7 @@ define([
             id = String(_id);
 
             // Card-specific sections (hide when editing a board)
-            var cardOnlySections = '.cp-kanban-status-row, .cp-kanban-assignee-row, .cp-kanban-dates-row, .cp-kanban-tags-row, .cp-kanban-scoring-row, .cp-kanban-tasks-section, .cp-kanban-description-section, .cp-kanban-project-deps-row';
+            var cardOnlySections = '.cp-kanban-status-row, .cp-kanban-assignee-row, .cp-kanban-dates-row, .cp-kanban-tags-row, .cp-kanban-security-tier-row, .cp-kanban-scoring-row, .cp-kanban-tasks-section, .cp-kanban-description-section, .cp-kanban-project-deps-row';
             // Board-specific sections (hide when editing a card)
             var boardOnlySections = '.cp-kanban-color-row';
 
@@ -2201,6 +2235,7 @@ define([
             due_date: due_date,
             completed: completed,
             scoring: scoring,
+            security_tier: security_tier,
             tasks: tasks,
             dependencies: dependencies,
             conflict: conflict,
@@ -2570,6 +2605,50 @@ define([
         return b;
     };
 
+
+    // Redact T3 items from a boards snapshot — pure function, operates on a deep copy.
+    // Strips T3 items from the items map, removes their IDs from board.item arrays,
+    // and removes T3 dependency references from surviving items.
+    // Defined at module scope so both initKanban and andThen2 can access it.
+    var redactT3Items = function (boards) {
+        var out = JSON.parse(JSON.stringify(boards)); // deep copy — never mutate live data
+        var items = out.items || {};
+        var data = out.data || {};
+
+        // Collect T3 item IDs and remove them.
+        // Normalize tier value to handle any case/whitespace variants in imported data.
+        var t3Ids = {};
+        Object.keys(items).forEach(function (id) {
+            var rawTier = items[id].security_tier;
+            var tier = typeof rawTier === 'string' ? rawTier.trim().toUpperCase() : '';
+            if (tier === 'T3') {
+                t3Ids[id] = true;
+                delete items[id];
+            }
+        });
+
+        // Remove T3 IDs from every board's item list
+        Object.keys(data).forEach(function (boardId) {
+            var board = data[boardId];
+            if (Array.isArray(board.item)) {
+                board.item = board.item.filter(function (id) {
+                    return !t3Ids[String(id)];
+                });
+            }
+        });
+
+        // Remove T3 dependency references from surviving items
+        Object.keys(items).forEach(function (id) {
+            var item = items[id];
+            if (Array.isArray(item.dependencies)) {
+                item.dependencies = item.dependencies.filter(function (depId) {
+                    return !t3Ids[String(depId)];
+                });
+            }
+        });
+
+        return out;
+    };
 
     var initKanban = function (framework, boards) {
         var migrated = false;
@@ -5827,9 +5906,149 @@ define([
                 $(themeToggle).find('i').removeClass('fa-moon-o').addClass('fa-sun-o');
             }
 
+            // --- Export helpers ---
+
+            // Build a filtered boards snapshot applying current filters and stripping T3 items.
+            // T3 redaction (including dependency refs) is delegated to redactT3Items.
+            var getExportableBoards = function () {
+                var raw = kanban.getBoardsJSON();
+                var scoringDimKeys = scoringDimensions.map(function (d) { return d.key; });
+                var items = raw.items || {};
+                var data = raw.data || {};
+                var activeTags = (kanban.options && kanban.options.tags) || [];
+                var tagsAnd = !!(kanban.options && kanban.options.tagsAnd);
+
+                // Determine which item IDs pass the current filters
+                var visibleIds = {};
+                Object.keys(items).forEach(function (id) {
+                    var item = items[id];
+                    if (!projectPassesFilters(item, currentFilters, scoringDimKeys)) { return; }
+                    // Apply active tag filter (AND = must have all; OR = must have at least one)
+                    if (activeTags.length) {
+                        var itemTags = Array.isArray(item.tags) ? item.tags : [];
+                        if (tagsAnd) {
+                            if (!activeTags.every(function (t) { return itemTags.indexOf(t) !== -1; })) { return; }
+                        } else {
+                            if (!activeTags.some(function (t) { return itemTags.indexOf(t) !== -1; })) { return; }
+                        }
+                    }
+                    visibleIds[id] = true;
+                });
+
+                // Build export structure preserving board order.
+                // Derive the items set from filtered board membership — do not walk raw.items
+                // directly, which would include orphaned cards not present in any board.
+                var exportData = { data: {}, items: {}, list: raw.list || [] };
+                var boardMemberIds = {};
+                Object.keys(data).forEach(function (boardId) {
+                    var board = data[boardId];
+                    var filteredItems = (board.item || []).filter(function (id) {
+                        return visibleIds[String(id)];
+                    });
+                    exportData.data[boardId] = Object.assign({}, board, { item: filteredItems });
+                    filteredItems.forEach(function (id) { boardMemberIds[String(id)] = true; });
+                });
+                Object.keys(boardMemberIds).forEach(function (id) {
+                    if (items[id]) { exportData.items[id] = items[id]; }
+                });
+
+                // Strip T3 items and their dependency references using the canonical redactor
+                return redactT3Items(exportData);
+            };
+
+            // Render a boards snapshot as Markdown.
+            // Boards become ## headings; each card becomes a list item with metadata lines.
+            var boardsToMarkdown = function (boards) {
+                var lines = [];
+                var data = boards.data || {};
+                var items = boards.items || {};
+                var list = boards.list || Object.keys(data);
+
+                list.forEach(function (boardId) {
+                    var board = data[boardId];
+                    if (!board) { return; }
+                    lines.push('## ' + (board.title || 'Untitled'));
+                    lines.push('');
+
+                    (board.item || []).forEach(function (itemId) {
+                        var item = items[String(itemId)];
+                        if (!item) { return; }
+
+                        lines.push('### ' + (item.title || 'Untitled'));
+                        if (item.assignee) { lines.push('**Assignee:** ' + item.assignee); }
+                        if (item.start_date) { lines.push('**Start:** ' + item.start_date); }
+                        if (item.due_date) { lines.push('**Due:** ' + item.due_date); }
+                        if (item.security_tier) { lines.push('**Security Tier:** ' + item.security_tier); }
+                        if (Array.isArray(item.tags) && item.tags.length) {
+                            lines.push('**Tags:** ' + item.tags.join(', '));
+                        }
+                        if (item.scoring) {
+                            var total = 0;
+                            var dimCount = scoringDimensions.length;
+                            scoringDimensions.forEach(function (dim) {
+                                total += (item.scoring[dim.key] || 0);
+                            });
+                            var avg = dimCount ? Math.round((total / dimCount) * 10) / 10 : 0;
+                            lines.push('**Score:** ' + avg + '/10');
+                        }
+                        if (item.body && item.body.trim()) {
+                            lines.push('');
+                            lines.push(item.body.trim());
+                        }
+                        lines.push('');
+                    });
+                });
+
+                return lines.join('\n');
+            };
+
+            var triggerDownload = function (blob, filename) {
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            var exportJsonBtn = h('button.btn.btn-toolbar-alt.cp-kanban-export-btn', {
+                title: 'Export visible cards as JSON (T3 items excluded)',
+                type: 'button'
+            }, [
+                h('i.fa.fa-download'),
+                h('span', ' JSON')
+            ]);
+
+            var exportMdBtn = h('button.btn.btn-toolbar-alt.cp-kanban-export-btn', {
+                title: 'Export visible cards as Markdown (T3 items excluded)',
+                type: 'button'
+            }, [
+                h('i.fa.fa-file-text-o'),
+                h('span', ' Markdown')
+            ]);
+
+            $(exportJsonBtn).on('click', function () {
+                var exportBoards = getExportableBoards();
+                var blob = new Blob([JSON.stringify(exportBoards, null, 2)], { type: 'application/json' });
+                triggerDownload(blob, 'kanban-export.json');
+            });
+
+            $(exportMdBtn).on('click', function () {
+                var exportBoards = getExportableBoards();
+                var md = boardsToMarkdown(exportBoards);
+                var blob = new Blob([md], { type: 'text/markdown' });
+                triggerDownload(blob, 'kanban-export.md');
+            });
+
             var container = h('div#cp-kanban-controls', [
                 viewSwitcher,
                 filterPanel,
+                h('div.cp-kanban-export-group', [
+                    exportJsonBtn,
+                    exportMdBtn
+                ]),
                 themeToggle,
                 h('div.cp-kanban-changeView.drag', [
                     toggleDragOff,
@@ -5950,7 +6169,8 @@ define([
         framework.setFileExporter('.json', function () {
             var content = kanban.getBoardsJSON();
             cleanData(content);
-            return new Blob([JSON.stringify(content, 0, 2)], {
+            var safe = redactT3Items(content);
+            return new Blob([JSON.stringify(safe, 0, 2)], {
                 type: 'application/json',
             });
         });
