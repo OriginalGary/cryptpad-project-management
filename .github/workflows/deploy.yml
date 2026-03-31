@@ -13,16 +13,16 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to VPS
+      - name: Deploy to Droplet
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 68.183.87.193
+          host: 64.227.144.36
           username: root
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -e
             cd /opt/cryptpad
-            echo "[$(date)] Starting deployment from GitHub Actions..."
+            echo "[$(date)] Starting deployment..."
             git config --global --add safe.directory /opt/cryptpad
             git fetch origin
             git reset --hard origin/main
