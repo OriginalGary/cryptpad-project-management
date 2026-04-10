@@ -27,6 +27,7 @@ jobs:
             git fetch origin
             git reset --hard origin/main
             docker compose build
-            docker compose down --remove-orphans || true
+            docker compose down --remove-orphans --timeout 30 || true
+            docker rm -f cryptpad-cryptpad-1 2>/dev/null || true
             docker compose up -d
             echo "[$(date)] Deployment complete!"
